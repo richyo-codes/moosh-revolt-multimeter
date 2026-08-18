@@ -17,6 +17,7 @@ import 'package:moosh_revolt/widgets/readings_display.dart';
 import 'package:moosh_revolt/widgets/realtime_chart.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
+import 'package:moosh_revolt/services/continuity_tone.dart';
 import 'package:moosh_revolt/screens/graph_screen.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
 
@@ -30,7 +31,8 @@ class DeviceScreen extends StatefulWidget {
   State<DeviceScreen> createState() => _DeviceScreenState();
 }
 
-class _DeviceScreenState extends State<DeviceScreen> {
+class _DeviceScreenState extends State<DeviceScreen>
+    with WidgetsBindingObserver {
   ChannelMode _ch1Mode = ChannelMode.current;
   ChannelMode _ch2Mode = ChannelMode.voltage;
   int _sampleRate = 125;
@@ -58,8 +60,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
   double? _ch2Maximum;
   DateTime? _continuityReadyAt;
   String? _continuityTonePath;
-  Process? _continuityToneProcess;
   bool _continuityToneWanted = false;
+  final ContinuityTone _continuityTone = ContinuityTone();
   final GlobalKey _captureKey = GlobalKey();
 
   // --- Device screen logging ---
@@ -84,6 +86,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _devLog(
       'initState — widget.device="${widget.device.name}" addr=${widget.device.deviceId}',
     );
@@ -152,6 +155,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   @override
   void dispose() {
     _devLog('>>> dispose');
+    WidgetsBinding.instance.removeObserver(this);
     _sampleDebounce?.cancel();
     _continuityToneWanted = false;
     _stopContinuityTone();
@@ -161,6 +165,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
     _bleProvider.disconnect();
     super.dispose();
     _devLog('<<< dispose');
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _continuityToneWanted = false;
+      _stopContinuityTone();
+    }
   }
 
   @override
@@ -866,26 +878,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _startContinuityTone() async {
-    if (_continuityToneProcess != null ||
-        !_continuityToneWanted ||
-        !Platform.isLinux) {
-      return;
-    }
+    if (!_continuityToneWanted) return;
     try {
-      _continuityTonePath ??= await _writeContinuityTone();
-      if (!_continuityToneWanted) return;
-      final player = await Process.start('paplay', [_continuityTonePath!]);
-      if (!_continuityToneWanted) {
-        player.kill();
-        return;
-      }
-      _continuityToneProcess = player;
-      unawaited(
-        player.exitCode.whenComplete(() {
-          if (identical(_continuityToneProcess, player)) {
-            _continuityToneProcess = null;
-          }
-        }),
+      await _continuityTone.start(
+        linuxToneFile: () async {
+          _continuityTonePath ??= await _writeContinuityTone();
+          return _continuityTonePath!;
+        },
       );
     } catch (error) {
       _devLog('continuity tone failed: $error');
@@ -893,9 +892,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   void _stopContinuityTone() {
-    final player = _continuityToneProcess;
-    _continuityToneProcess = null;
-    player?.kill();
+    _continuityTone.stop();
   }
 
   Future<String> _writeContinuityTone() async {
