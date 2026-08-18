@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MooshRevolt
+Comment=Modern Mooshimeter BLE multimeter client
+Exec=mooshrevolt
+Icon=ca.richyoung.mooshrevolt
+Terminal=false
+Categories=Utility;Science;Electronics;
+Keywords=multimeter;mooshimeter;BLE;voltage;current;

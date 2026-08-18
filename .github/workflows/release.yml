@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  linux-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+      - name: Install Linux build dependencies
+        run: |
+          if command -v sudo >/dev/null; then SUDO=sudo; else SUDO=''; fi
+          $SUDO apt-get update
+          $SUDO apt-get install --yes clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Configure Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_STORE_PASSWORD"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_STORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=release.jks
+          EOF
+      - run: flutter build linux --release
+      - run: flutter build apk --release
+      - name: Package Linux bundle
+        run: |
+          tar -C build/linux/x64/release -czf mooshrevolt-linux-x64.tar.gz bundle
+          sha256sum mooshrevolt-linux-x64.tar.gz > mooshrevolt-linux-x64.tar.gz.sha256
+          cp build/app/outputs/flutter-apk/app-release.apk mooshrevolt-android.apk
+          sha256sum mooshrevolt-android.apk > mooshrevolt-android.apk.sha256
+      - name: Publish GitHub release
+        if: github.server_url == 'https://github.com'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            mooshrevolt-linux-x64.tar.gz
+            mooshrevolt-linux-x64.tar.gz.sha256
+            mooshrevolt-android.apk
+            mooshrevolt-android.apk.sha256
+      - name: Create Gitea release and upload assets
+        if: github.server_url != 'https://github.com'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_API_URL: ${{ github.server_url }}/api/v1
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -n "$GITEA_TOKEN"
+          release_json=$(curl --fail-with-body --request POST \
+            --header "Authorization: token $GITEA_TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\",\"generate_release_notes\":true}" \
+            "$GITEA_API_URL/repos/$REPOSITORY/releases")
+          release_id=$(printf '%s' "$release_json" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+          test -n "$release_id"
+          for asset in mooshrevolt-linux-x64.tar.gz mooshrevolt-linux-x64.tar.gz.sha256 mooshrevolt-android.apk mooshrevolt-android.apk.sha256; do
+            curl --fail-with-body --request POST \
+              --header "Authorization: token $GITEA_TOKEN" \
+              --upload-file "$asset" \
+              "$GITEA_API_URL/repos/$REPOSITORY/releases/$release_id/assets?name=$asset"
+          done

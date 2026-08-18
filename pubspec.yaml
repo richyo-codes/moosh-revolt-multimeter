@@ -1,0 +1,36 @@
+name: moosh_revolt
+description: "MooshRevolt: modern Android and Linux desktop client for the Mooshimeter BLE multimeter."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  universal_ble: ^2.1.0
+  bluez: ^0.8.3
+  fl_chart: ^1.2.0
+  shared_preferences: ^2.3.3
+  uuid: ^4.5.1
+  provider: ^6.1.2
+  mooshimeter_ble:
+    path: packages/mooshimeter_ble
+  path_provider: ^2.1.5
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/mooshrevolt_mark.png
