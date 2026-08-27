@@ -9,13 +9,18 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.0'
+          flutter-version: '3.47.1'
           channel: stable
+          cache: false
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          test -f "$(dirname "$(command -v flutter)")/internal/shared.sh"
       - name: Install Linux build dependencies
         run: |
           if command -v sudo >/dev/null; then SUDO=sudo; else SUDO=''; fi
@@ -32,7 +37,7 @@ jobs:
       - name: Build Linux application
         run: flutter build linux --release
       - name: Upload Linux build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mooshrevolt-linux
           path: build/linux/x64/release/bundle
@@ -42,19 +47,24 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.0'
+          flutter-version: '3.47.1'
           channel: stable
+          cache: false
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          test -f "$(dirname "$(command -v flutter)")/internal/shared.sh"
       - name: Resolve dependencies
         run: flutter pub get
       - name: Build Android debug APK
         run: flutter build apk --debug
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mooshrevolt-android-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk

@@ -12,13 +12,18 @@ jobs:
   linux-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.0'
+          flutter-version: '3.47.1'
           channel: stable
+          cache: false
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          test -f "$(dirname "$(command -v flutter)")/internal/shared.sh"
       - name: Install Linux build dependencies
         run: |
           if command -v sudo >/dev/null; then SUDO=sudo; else SUDO=''; fi
@@ -55,7 +60,7 @@ jobs:
           sha256sum mooshrevolt-android.apk > mooshrevolt-android.apk.sha256
       - name: Publish GitHub release
         if: github.server_url == 'https://github.com'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
