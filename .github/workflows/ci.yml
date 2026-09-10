@@ -44,6 +44,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk/x86_64/25.08 org.freedesktop.Platform/x86_64/25.08
+      - name: Build Flatpak bundle
+        run: ./tools/build_flatpak.sh
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: mooshrevolt-flatpak
+          path: build/ca.richyoung.mooshrevolt.flatpak
+          if-no-files-found: error
+          retention-days: 14
+
   android:
     runs-on: ubuntu-latest
     steps:

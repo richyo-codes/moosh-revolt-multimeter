@@ -52,12 +52,22 @@ jobs:
           EOF
       - run: flutter build linux --release
       - run: flutter build apk --release
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk/x86_64/25.08 org.freedesktop.Platform/x86_64/25.08
+      - name: Build Flatpak bundle
+        run: ./tools/build_flatpak.sh
       - name: Package Linux bundle
         run: |
           tar -C build/linux/x64/release -czf mooshrevolt-linux-x64.tar.gz bundle
           sha256sum mooshrevolt-linux-x64.tar.gz > mooshrevolt-linux-x64.tar.gz.sha256
           cp build/app/outputs/flutter-apk/app-release.apk mooshrevolt-android.apk
           sha256sum mooshrevolt-android.apk > mooshrevolt-android.apk.sha256
+          cp build/ca.richyoung.mooshrevolt.flatpak mooshrevolt.flatpak
+          sha256sum mooshrevolt.flatpak > mooshrevolt.flatpak.sha256
       - name: Publish GitHub release
         if: github.server_url == 'https://github.com'
         uses: softprops/action-gh-release@v3
@@ -68,6 +78,8 @@ jobs:
             mooshrevolt-linux-x64.tar.gz.sha256
             mooshrevolt-android.apk
             mooshrevolt-android.apk.sha256
+            mooshrevolt.flatpak
+            mooshrevolt.flatpak.sha256
       - name: Create Gitea release and upload assets
         if: github.server_url != 'https://github.com'
         env:

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ca.richyoung.mooshrevolt</id>
+  <name>MooshRevolt</name>
+  <summary>Modern Linux and Android client for the Mooshimeter BLE multimeter</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="ca.richyoung">
+    <name>Richard Young</name>
+  </developer>
+  <description>
+    <p>
+      MooshRevolt is an independent, open-source Flutter client for the
+      Mooshimeter V.1 Bluetooth LE multimeter.
+    </p>
+    <p>
+      View live voltage and current readings, configure channels, track
+      minimum and maximum values, graph measurements, and use a continuity
+      tone when testing resistance.
+    </p>
+  </description>
+  <launchable type="desktop-id">ca.richyoung.mooshrevolt.desktop</launchable>
+  <provides>
+    <binary>mooshrevolt</binary>
+  </provides>
+  <url type="homepage">https://github.com/richyo-codes/moosh-revolt-multimeter</url>
+  <url type="bugtracker">https://github.com/richyo-codes/moosh-revolt-multimeter/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

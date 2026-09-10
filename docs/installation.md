@@ -13,6 +13,19 @@ flutter pub get
 flutter run -d linux
 ```
 
+### Flatpak
+
+Locally built Flatpak bundles require `flatpak`, `flatpak-builder`, and the
+Flathub Freedesktop 25.08 SDK/runtime:
+
+```sh
+./tools/build_flatpak.sh
+flatpak install --user --reinstall build/ca.richyoung.mooshrevolt.flatpak
+```
+
+The Flatpak uses the system BlueZ D-Bus service for Bluetooth LE access. Release
+artifacts include a Flatpak bundle when the release workflow completes.
+
 ## Android
 
 Tagged releases include a signed `mooshrevolt-android.apk`. Sideload it, enable

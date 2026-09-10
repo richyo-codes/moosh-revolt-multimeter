@@ -1,0 +1,35 @@
+app-id: ca.richyoung.mooshrevolt
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: mooshrevolt
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # universal_ble uses BlueZ over the system D-Bus on Linux.
+  - --system-talk-name=org.bluez
+
+modules:
+  - name: mooshrevolt
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../build/linux/x64/release/bundle
+        dest: bundle
+      - type: dir
+        path: .
+        dest: flatpak
+      - type: file
+        path: ../linux/assets/icons/hicolor/256x256/apps/ca.richyoung.mooshrevolt.png
+        dest-filename: mooshrevolt.png
+    build-commands:
+      - install -Dm755 bundle/mooshrevolt /app/bin/mooshrevolt
+      - cp -r bundle/data /app/bin/
+      - cp -r bundle/lib /app/bin/
+      - install -Dm644 flatpak/ca.richyoung.mooshrevolt.desktop /app/share/applications/ca.richyoung.mooshrevolt.desktop
+      - install -Dm644 flatpak/ca.richyoung.mooshrevolt.metainfo.xml /app/share/metainfo/ca.richyoung.mooshrevolt.metainfo.xml
+      - install -Dm644 mooshrevolt.png /app/share/icons/hicolor/256x256/apps/ca.richyoung.mooshrevolt.png
