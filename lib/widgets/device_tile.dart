@@ -70,22 +70,23 @@ class DeviceTile extends StatelessWidget {
               ),
             ),
           // RSSI badge
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: rssiColor,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.signal_cellular_alt,
-                size: 10,
-                color: Colors.white,
+          if (rssi > -999)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: rssiColor,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.signal_cellular_alt,
+                  size: 10,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
         ],
       ),
       title: Text(
@@ -97,7 +98,7 @@ class DeviceTile extends StatelessWidget {
         children: [
           const SizedBox(height: 2),
           Text(
-            '$address • $rssiLabel ($rssi dBm)',
+            rssi > -999 ? '$address • $rssiLabel ($rssi dBm)' : address,
             style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
           ),
           if (isRemembered)

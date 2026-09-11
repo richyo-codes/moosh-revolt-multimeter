@@ -212,6 +212,7 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
         title: const FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
@@ -227,7 +228,9 @@ class _ScanScreenState extends State<ScanScreen> {
         actions: [
           IconButton(
             icon: Icon(_isScanning ? Icons.stop : Icons.refresh),
-            onPressed: _isScanning ? _stopScan : _startScan,
+            onPressed: _connectingAddress != null
+                ? null
+                : (_isScanning ? _stopScan : _startScan),
             tooltip: _isScanning ? 'Stop Scan' : 'Scan',
           ),
           PopupMenuButton<String>(
@@ -244,291 +247,169 @@ class _ScanScreenState extends State<ScanScreen> {
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
-          final remembered = settings.rememberedDevices;
+          final colors = Theme.of(context).colorScheme;
           final provider = context.watch<BleProvider>();
-          final connectedAddr = provider.deviceId?.toLowerCase() ?? '';
-          return Column(
-            children: [
-              // Scan status bar
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                color: Colors.blue.shade50,
-                child: Row(
+          final remembered = settings.rememberedDevices;
+          final busy = _connectingAddress != null;
+          return SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
                   children: [
-                    Icon(
-                      _isScanning ? Icons.hourglass_empty : Icons.info_outline,
-                      color: Colors.blue.shade700,
-                      size: 20,
+                    Text(
+                      'Connect your meter',
+                      style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _scanStatus,
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontSize: 14,
-                        ),
-                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Wake your Mooshimeter and keep it nearby.',
+                      style: TextStyle(color: colors.onSurfaceVariant),
                     ),
-                    if (_deviceCount > 0)
-                      Chip(
-                        label: Text('$_deviceCount found'),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                  ],
-                ),
-              ),
-
-              // Connected devices section
-              if (_connectedDevices.isNotEmpty) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  color: Colors.green.shade100,
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.bluetooth_connected,
-                        color: Colors.green,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Connected',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${_connectedDevices.length} online',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  constraints: BoxConstraints(
-                    maxHeight: _connectedDevices.length > 2
-                        ? 120
-                        : _connectedDevices.length * 60.0,
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _connectedDevices.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final device = _connectedDevices[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.green.shade200,
-                          child: const Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: Colors.green,
-                          ),
-                        ),
-                        title: Text(
-                          (device.name ?? '').isNotEmpty
-                              ? device.name!
-                              : 'Unknown Device',
-                        ),
-                        subtitle: Text(
-                          device.deviceId,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                          ),
-                        ),
-                        trailing: const Chip(
-                          label: Text(
-                            'Connected',
-                            style: TextStyle(fontSize: 10),
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          backgroundColor: Colors.green,
-                        ),
-                        onTap: () => _selectDevice(device),
-                      );
-                    },
-                  ),
-                ),
-                const Divider(height: 1),
-              ],
-
-              // Remembered devices section
-              if (remembered.isNotEmpty) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  color: Colors.green.shade50,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.star, color: Colors.green, size: 18),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Remembered',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${remembered.length} saved',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  constraints: BoxConstraints(
-                    maxHeight: remembered.length > 3
-                        ? 160
-                        : remembered.length * 60.0,
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: remembered.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final dev = remembered[index];
-                      final hasAutoConnect = dev.autoConnect;
-                      final connecting = _isConnecting(dev.address);
-                      return ListTile(
-                        leading: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: hasAutoConnect
-                              ? Colors.amber.shade100
-                              : Colors.green.shade100,
-                          child: Icon(
-                            hasAutoConnect ? Icons.flash_on : Icons.bluetooth,
-                            size: 16,
-                            color: hasAutoConnect
-                                ? Colors.amber.shade700
-                                : Colors.green.shade700,
-                          ),
-                        ),
-                        title: Text(
-                          dev.name.isNotEmpty ? dev.name : 'Unknown Device',
-                        ),
-                        subtitle: Text(
-                          dev.address,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                          ),
-                        ),
-                        trailing: connecting
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : FilledButton.icon(
-                                icon: Icon(
-                                  hasAutoConnect
-                                      ? Icons.flash_on
-                                      : Icons.bluetooth_connected,
-                                  size: 16,
-                                ),
-                                label: const Text('Connect'),
-                                onPressed: _connectingAddress == null
-                                    ? () => _connectRemembered(dev)
-                                    : null,
-                              ),
-                        onTap: () => _connectRemembered(dev),
-                      );
-                    },
-                  ),
-                ),
-              ],
-
-              // Scan separator
-              if (remembered.isNotEmpty) const Divider(height: 1),
-
-              // Device list
-              Expanded(
-                child: _devices.isEmpty
-                    ? Center(
+                    const SizedBox(height: 20),
+                    Card.filled(
+                      margin: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.bluetooth_searching,
-                              size: 64,
-                              color: Colors.grey.shade300,
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.bluetooth_searching,
+                                  color: colors.primary,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(_scanStatus)),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              remembered.isEmpty
-                                  ? 'No devices detected'
-                                  : 'No nearby devices detected',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey.shade600,
+                            if (_isScanning || busy) ...[
+                              const SizedBox(height: 12),
+                              const LinearProgressIndicator(),
+                            ],
+                            const SizedBox(height: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: busy
+                                  ? null
+                                  : (_isScanning ? _stopScan : _startScan),
+                              icon: Icon(
+                                _isScanning ? Icons.stop : Icons.search,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              remembered.isEmpty
-                                  ? 'Press Scan to find your Mooshimeter'
-                                  : 'Use Connect above to find a saved meter',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade500,
+                              label: Text(
+                                _isScanning ? 'Stop scanning' : 'Find meters',
                               ),
                             ),
                           ],
                         ),
-                      )
-                    : ListView.separated(
-                        itemCount: _devices.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final result = _devices[index];
-                          final addr = result.device.deviceId.toLowerCase();
-                          final isConnected = connectedAddr == addr;
-                          final isRemembered = settings.isRemembered(addr);
-                          final devName = result.device.name ?? 'Unknown';
-                          return DeviceTile(
-                            name: devName,
-                            address: result.device.deviceId,
-                            rssi: result.rssi,
-                            isConnected: isConnected,
-                            isConnecting: _isConnecting(result.device.deviceId),
-                            onTap: () => _selectDevice(result.device),
-                            isRemembered: isRemembered,
-                            onRemember: () => _rememberDevice(result.device),
-                            onForget: () =>
-                                _forgetDevice(result.device.deviceId),
-                          );
-                        },
                       ),
+                    ),
+                    if (remembered.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Saved meters',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      for (final dev in remembered)
+                        Card.outlined(
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            leading: Icon(
+                              dev.autoConnect ? Icons.bolt : Icons.star_outline,
+                              color: colors.primary,
+                            ),
+                            title: Text(
+                              dev.name.isEmpty ? 'Mooshimeter' : dev.name,
+                            ),
+                            subtitle: Text(
+                              dev.autoConnect
+                                  ? 'Auto-connect enabled'
+                                  : 'Saved · tap to connect',
+                            ),
+                            trailing: _isConnecting(dev.address)
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.chevron_right),
+                            onTap: busy ? null : () => _connectRemembered(dev),
+                          ),
+                        ),
+                    ],
+                    if (_connectedDevices.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Known to this computer',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      for (final device in _connectedDevices)
+                        Card.outlined(
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.bluetooth,
+                              color: colors.primary,
+                            ),
+                            title: Text(device.name ?? 'Mooshimeter'),
+                            subtitle: const Text(
+                              'Open to establish a meter connection',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: busy ? null : () => _selectDevice(device),
+                          ),
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+                    Text(
+                      'Nearby meters',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_devices.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          _isScanning
+                              ? 'Searching for nearby Mooshimeters…'
+                              : remembered.isNotEmpty
+                              ? 'Connect a saved meter above, or search for another.'
+                              : 'No meters found yet. Check Bluetooth and try Find meters.',
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    for (final result in _devices)
+                      Card.outlined(
+                        child: DeviceTile(
+                          name: result.device.name ?? 'Mooshimeter',
+                          address: result.device.deviceId,
+                          rssi: result.rssi,
+                          isConnected:
+                              provider.state == MmConnectionState.connected &&
+                              provider.deviceId == result.device.deviceId,
+                          isConnecting: _isConnecting(result.device.deviceId),
+                          onTap: () {
+                            if (!busy) _selectDevice(result.device);
+                          },
+                          isRemembered: settings.isRemembered(
+                            result.device.deviceId.toLowerCase(),
+                          ),
+                          onRemember: () => _rememberDevice(result.device),
+                          onForget: () => _forgetDevice(result.device.deviceId),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ],
+            ),
           );
         },
       ),

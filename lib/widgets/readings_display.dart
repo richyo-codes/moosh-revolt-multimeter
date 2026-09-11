@@ -317,17 +317,25 @@ class _ChannelReading extends StatelessWidget {
                       )
                       .toList(),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     child: Text(
                       displayUnit == DisplayUnit.auto
                           ? 'Units: Auto'
                           : displayUnit.label(units),
-                      style: const TextStyle(fontSize: 10),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
               if (compact && onMinMaxChanged != null)
                 IconButton(
+                  isSelected: minMaxTracking,
+                  selectedIcon: Icon(Icons.swap_vert, color: color, size: 18),
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints.tightFor(width: 28),
@@ -375,7 +383,7 @@ class _ChannelReading extends StatelessWidget {
                   Text(
                     _getPrefix() + units,
                     style: TextStyle(
-                      fontSize: compact ? 11 : 16,
+                      fontSize: compact ? 14 : 18,
                       fontWeight: FontWeight.w600,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
