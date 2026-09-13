@@ -9,6 +9,9 @@ environment:
   sdk: ^3.12.2
 
 dependencies:
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
@@ -31,6 +34,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  generate: true
   uses-material-design: true
   assets:
     - assets/images/mooshrevolt_mark.png

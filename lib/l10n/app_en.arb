@@ -1,0 +1,311 @@
+{
+  "@@locale": "en",
+  "settings": "Settings",
+  "connection": "Connection",
+  "autoConnect": "Auto-connect on launch",
+  "autoConnectHelp": "Automatically reconnect to last remembered device",
+  "skipFirmware": "Skip firmware check",
+  "skipFirmwareHelp": "Skip OAD firmware update prompt",
+  "appearance": "Appearance",
+  "darkMode": "Dark mode",
+  "darkModeHelp": "Use a dark color scheme throughout the app",
+  "showFloating": "Show values for floating probes",
+  "showFloatingHelp": "Keep displaying near-zero readings when a probe may be unconnected",
+  "rememberedDevices": "Remembered Devices",
+  "noRemembered": "No devices remembered yet. Connect to a device and tap \"Remember\" to save it.",
+  "forgetQuestion": "Forget device?",
+  "cancel": "Cancel",
+  "forget": "Forget",
+  "unknownDevice": "Unknown Device",
+  "dataCollection": "Data Collection",
+  "defaultSampleRate": "Default sample rate",
+  "maxGraphPoints": "Max graph points",
+  "about": "About",
+  "serviceUuids": "BLE Service UUIDs",
+  "connectYourMeter": "Connect your meter",
+  "wakeMeter": "Wake your Mooshimeter and keep it nearby.",
+  "stopScanning": "Stop scanning",
+  "findMeters": "Find meters",
+  "savedMeters": "Saved meters",
+  "autoConnectEnabled": "Auto-connect enabled",
+  "savedConnect": "Saved · tap to connect",
+  "knownDevices": "Known to this computer",
+  "establishConnection": "Open to establish a meter connection",
+  "nearbyMeters": "Nearby meters",
+  "searchingMeters": "Searching for nearby Mooshimeters…",
+  "savedHint": "Connect a saved meter above, or search for another.",
+  "noMeters": "No meters found yet. Check Bluetooth and try Find meters.",
+  "scan": "Scan",
+  "stopScan": "Stop Scan",
+  "meterSettings": "Meter settings",
+  "graphView": "Graph View",
+  "clearGraph": "Clear graph",
+  "copyCsv": "Copy CSV logger command",
+  "saveSnapshot": "Save data snapshot",
+  "saveScreenshot": "Save screenshot",
+  "disconnect": "Disconnect",
+  "connectingMeter": "Connecting to meter…",
+  "meterDisconnected": "Meter disconnected",
+  "disconnectedHelp": "The live readings have been cleared. Reconnect to resume sampling.",
+  "reconnect": "Reconnect",
+  "connecting": "Connecting...",
+  "connected": "Connected",
+  "disconnecting": "Disconnecting...",
+  "disconnected": "Disconnected",
+  "enableChannel": "Enable a channel to show its reading",
+  "unitsHelp": "Display units: Auto chooses an SI prefix",
+  "unitsAuto": "Units: Auto",
+  "stopMinMax": "Stop min/max tracking",
+  "trackMinMax": "Track minimum and maximum values",
+  "outOfRange": "OUT OF RANGE",
+  "waitingSample": "Waiting for a fresh sample",
+  "possiblyFloating": "Near zero · possibly floating",
+  "rememberDevice": "Remember device",
+  "forgetDevice": "Forget device",
+  "autoConnectNext": "Auto-connect next time",
+  "rememberedTap": "Remembered — tap to auto-connect",
+  "connect": "Connect",
+  "live": "Live",
+  "exportCsv": "Export CSV",
+  "clearData": "Clear Data",
+  "all": "All",
+  "noSamples": "No samples to save",
+  "sampleRate": "Sample Rate",
+  "sdLogging": "SD Card Logging",
+  "sdRefreshHint": "Tap refresh to check the meter’s microSD card.",
+  "sdDetected": "Card detected. The meter can log while disconnected.",
+  "sdInsert": "Insert a FAT/FAT32 microSD card and refresh.",
+  "refreshSd": "Refresh SD-card status",
+  "logToSd": "Log measurements to SD card",
+  "loggingContinues": "Logging continues after disconnecting.",
+  "loggingInterval": "Logging interval",
+  "split": "Split",
+  "dualAxis": "Dual axis",
+  "shared": "Shared",
+  "auto": "Auto",
+  "voltageDc": "Voltage DC",
+  "voltageAc": "Voltage AC",
+  "currentDc": "Current DC",
+  "currentAc": "Current AC",
+  "internalTemperature": "Internal Temperature",
+  "resistance": "Resistance",
+  "diode": "Diode Drop",
+  "frequency": "Frequency",
+  "period": "Period",
+  "auxDc": "Auxiliary Voltage DC",
+  "auxAc": "Auxiliary Voltage AC",
+  "inputRange": "Input range",
+  "autoRecommended": "Auto (recommended)",
+  "input60": "60 V input",
+  "input600": "600 V input",
+  "continuityTone": "Continuity tone",
+  "defaultRange": "Default input range",
+  "currentRangeHelp": "CH1 current uses the 10 A input range.",
+  "resistanceRangeHelp": "Resistance and continuity use the 1 kΩ input range.",
+  "defaultRangeHelp": "This measurement uses the meter default range.",
+  "aboutApp": "About MooshRevolt",
+  "modernClient": "A modern Mooshimeter client",
+  "whyExists": "Why it exists",
+  "license": "License",
+  "sampleCount": "{count, plural, one{1 sample} other{{count} samples}}",
+  "@sampleCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "foundDevices": "{count, plural, one{Found 1 device} other{Found {count} devices}}",
+  "@foundDevices": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batteryPercent": "Battery {value}%",
+  "@batteryPercent": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "savedPath": "Saved {path}",
+  "@savedPath": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "configureChannel": "Configure {channel}",
+  "@configureChannel": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "unitsValue": "Units: {unit}",
+  "@unitsValue": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "graphStyle": "Graph style: {style}",
+  "@graphStyle": {
+    "placeholders": {
+      "style": {
+        "type": "String"
+      }
+    }
+  },
+  "sampleRateValue": "Sample rate: {rate} Hz",
+  "@sampleRateValue": {
+    "placeholders": {
+      "rate": {
+        "type": "int"
+      }
+    }
+  },
+  "removeDevice": "Remove \"{name}\" from remembered devices?",
+  "@removeDevice": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceForgotten": "{name} forgotten",
+  "@deviceForgotten": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "rememberedDate": "Remembered: {date}",
+  "@rememberedDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "seconds": "{count, plural, one{1 second} other{{count} seconds}}",
+  "@seconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "points": "Points: {count}",
+  "@points": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lookingFor": "Looking for {name}…",
+  "@lookingFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connectingTo": "Connecting to {name}…",
+  "@connectingTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "errorMessage": "Error: {error}",
+  "@errorMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tapScan": "Tap to scan",
+  "scanning": "Scanning...",
+  "noneFound": "No devices found",
+  "connectFailed": "Could not connect — try again",
+  "deviceRemembered": "Device remembered",
+  "forgotten": "Device forgotten",
+  "showChannel": "Show channel",
+  "showChannelHelp": "Include this channel in readings and graph",
+  "continuityHelp": "Play a continuous tone below 50 Ω",
+  "voltageAux": "Voltage and auxiliary measurements",
+  "autoRangeHelp": "Auto keeps normal measurements on the 60 V input and changes only when needed.",
+  "tempRangeHelp": "Temperature mode does not use a voltage range.",
+  "loggingRangeHelp": "Set a safe fixed input range before logging; the meter does not autorange while logging.",
+  "notRemembered": "Not remembered",
+  "remember": "Remember",
+  "deviceSettings": "Device settings",
+  "graphStyleTitle": "Graph style",
+  "sampleRateTitle": "Sample rate",
+  "splitChannels": "Split channels",
+  "sharedAxis": "Shared axis",
+  "enableForCsv": "Enable at least one channel before copying a logger command",
+  "appDescription": "MooshRevolt is an Android and Linux desktop app for the Mooshimeter BLE multimeter. It provides live readings, graphing, logging, and a practical interface for modern devices.",
+  "appBackground": "The project grew from using a Mooshimeter bought around 2016. There was no dedicated Linux desktop app, existing libsigrok support could be unreliable, and the original Android experience was not designed for current devices. MooshRevolt brings the meter to a shared Flutter codebase for Linux and Android.",
+  "licenseNotice": "Copyright © Rich Young. Licensed under GNU GPL v3.0 or later. Source code and modified versions must remain available under the same license.",
+  "meterNotFound": "Could not find \"{name}\" — is it nearby ?",
+  "@meterNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "language": "Language",
+  "systemLanguage": "System default",
+  "measurement": "Measurement",
+  "currentAux": "Current, resistance, and auxiliary measurements",
+  "device": "Device",
+  "statusUnchecked": "Status not checked",
+  "ready": "Ready",
+  "excellent": "Excellent",
+  "good": "Good",
+  "fair": "Fair",
+  "weak": "Weak",
+  "cardUnavailable": "Card unavailable (status {status})",
+  "batteryVoltage": "{voltage} V measured across two AA cells",
+  "@cardUnavailable": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "@batteryVoltage": {
+    "placeholders": {
+      "voltage": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingSamples": "Waiting for samples…",
+  "currentAxis": "Current (A)",
+  "voltageAxis": "Voltage (V)",
+  "rememberedMeter": "Remembered: {name} ({address})",
+  "@rememberedMeter": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "address": {
+        "type": "String"
+      }
+    }
+  }
+}

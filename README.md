@@ -30,6 +30,7 @@ building from source, and mock development mode.
 - [Linux CSV logger](docs/installation.md#linux-csv-logger)
 - [Protocol replay CLI](docs/installation.md#protocol-replay-cli)
 - [UI verification and screenshot workflow](docs/ui-verification.md)
+- [Translations and language support](docs/localization.md)
 - [Release and CI/CD setup](docs/releasing.md)
 - [Project background](background.md)
 

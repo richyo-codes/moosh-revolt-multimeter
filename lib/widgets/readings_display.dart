@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 
@@ -76,7 +77,7 @@ class ReadingsDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompact = false;
     final ch1 = _ChannelReading(
-      label: 'CH1 · ${ch1Mode.label}',
+      label: 'CH1 · ${ch1Mode.localizedLabel(context)}',
       value: ch1Value,
       units: ch1Units,
       max: ch1Max,
@@ -96,7 +97,7 @@ class ReadingsDisplay extends StatelessWidget {
       showFloatingValues: showFloatingValues,
     );
     final ch2 = _ChannelReading(
-      label: 'CH2 · ${ch2Mode.label}',
+      label: 'CH2 · ${ch2Mode.localizedLabel(context)}',
       value: ch2Value,
       units: ch2Units,
       max: ch2Max,
@@ -121,7 +122,7 @@ class ReadingsDisplay extends StatelessWidget {
         // compact header before their controls begin competing with the value.
         final compact = compactLayout || constraints.maxHeight < 360;
         final compactCh1 = _ChannelReading(
-          label: 'CH1 · ${ch1Mode.label}',
+          label: 'CH1 · ${ch1Mode.localizedLabel(context)}',
           value: ch1Value,
           units: ch1Units,
           max: ch1Max,
@@ -141,7 +142,7 @@ class ReadingsDisplay extends StatelessWidget {
           showFloatingValues: showFloatingValues,
         );
         final compactCh2 = _ChannelReading(
-          label: 'CH2 · ${ch2Mode.label}',
+          label: 'CH2 · ${ch2Mode.localizedLabel(context)}',
           value: ch2Value,
           units: ch2Units,
           max: ch2Max,
@@ -161,9 +162,9 @@ class ReadingsDisplay extends StatelessWidget {
           showFloatingValues: showFloatingValues,
         );
         if (!showCh1 && !showCh2) {
-          return const Center(
+          return Center(
             key: ValueKey('channel-readings-none'),
-            child: Text('Enable a channel to show its reading'),
+            child: Text(context.l10n.enableChannel),
           );
         }
         if (!showCh1) {
@@ -174,12 +175,12 @@ class ReadingsDisplay extends StatelessWidget {
         }
         if (stackedLayout || constraints.maxWidth < 450) {
           return Column(
-            key: const ValueKey('channel-readings-stacked'),
+            key: ValueKey('channel-readings-stacked'),
             children: [
               Expanded(
                 child: _readingPanel(context, compact ? compactCh1 : ch1),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Expanded(
                 child: _readingPanel(context, compact ? compactCh2 : ch2),
               ),
@@ -188,19 +189,19 @@ class ReadingsDisplay extends StatelessWidget {
         }
         if (compact) {
           return Row(
-            key: const ValueKey('channel-readings-compact'),
+            key: ValueKey('channel-readings-compact'),
             children: [
               Expanded(child: _readingPanel(context, compactCh1)),
-              const SizedBox(width: 4),
+              SizedBox(width: 4),
               Expanded(child: _readingPanel(context, compactCh2)),
             ],
           );
         }
         return Row(
-          key: const ValueKey('channel-readings-side-by-side'),
+          key: ValueKey('channel-readings-side-by-side'),
           children: [
             Expanded(child: _readingPanel(context, ch1)),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(child: _readingPanel(context, ch2)),
           ],
         );
@@ -211,7 +212,7 @@ class ReadingsDisplay extends StatelessWidget {
   Widget _readingPanel(BuildContext context, Widget child) {
     final colors = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8),
+      margin: EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
@@ -298,32 +299,33 @@ class _ChannelReading extends StatelessWidget {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28),
+                  constraints: BoxConstraints.tightFor(width: 28),
                   icon: Icon(Icons.tune, size: compact ? 14 : 18),
-                  tooltip: 'Configure $label',
+                  tooltip: context.l10n.configureChannel(label),
                   onPressed: onConfigure,
                 ),
               if (compact)
                 PopupMenuButton<DisplayUnit>(
-                  tooltip: 'Display units: Auto chooses an SI prefix',
+                  tooltip: context.l10n.unitsHelp,
                   initialValue: displayUnit,
                   onSelected: onDisplayUnitChanged,
                   itemBuilder: (_) => DisplayUnit.values
                       .map(
                         (unit) => PopupMenuItem(
                           value: unit,
-                          child: Text(unit.label(units)),
+                          child: Text(
+                            unit == DisplayUnit.auto
+                                ? context.l10n.auto
+                                : unit.label(units),
+                          ),
                         ),
                       )
                       .toList(),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 12,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                     child: Text(
                       displayUnit == DisplayUnit.auto
-                          ? 'Units: Auto'
+                          ? context.l10n.unitsAuto
                           : displayUnit.label(units),
                       style: TextStyle(
                         fontSize: 11,
@@ -338,14 +340,14 @@ class _ChannelReading extends StatelessWidget {
                   selectedIcon: Icon(Icons.swap_vert, color: color, size: 18),
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28),
+                  constraints: BoxConstraints.tightFor(width: 28),
                   icon: Icon(
                     minMaxTracking ? Icons.swap_vert : Icons.swap_vert_outlined,
                     size: 16,
                   ),
                   tooltip: minMaxTracking
-                      ? 'Stop min/max tracking'
-                      : 'Track minimum and maximum values',
+                      ? context.l10n.stopMinMax
+                      : context.l10n.trackMinMax,
                   onPressed: () => onMinMaxChanged!(!minMaxTracking),
                 ),
             ],
@@ -353,7 +355,7 @@ class _ChannelReading extends StatelessWidget {
           SizedBox(height: compact ? 4 : 8),
           if (isOutOfRange)
             Text(
-              'OUT OF RANGE',
+              context.l10n.outOfRange,
               style: TextStyle(
                 fontSize: compact ? 16 : 24,
                 fontWeight: FontWeight.bold,
@@ -368,7 +370,7 @@ class _ChannelReading extends StatelessWidget {
               children: [
                 Flexible(
                   child: Text(
-                    hideValue ? '—' : _formatValue(),
+                    hideValue ? '—' : _formatValue(context),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: compact ? 20 : 36,
@@ -399,14 +401,18 @@ class _ChannelReading extends StatelessWidget {
                 runSpacing: 4,
                 children: [
                   PopupMenuButton<DisplayUnit>(
-                    tooltip: 'Display units: Auto chooses an SI prefix',
+                    tooltip: context.l10n.unitsHelp,
                     initialValue: displayUnit,
                     onSelected: onDisplayUnitChanged,
                     itemBuilder: (_) => DisplayUnit.values
                         .map(
                           (unit) => PopupMenuItem(
                             value: unit,
-                            child: Text(unit.label(units)),
+                            child: Text(
+                              unit == DisplayUnit.auto
+                                  ? context.l10n.auto
+                                  : unit.label(units),
+                            ),
                           ),
                         )
                         .toList(),
@@ -415,8 +421,8 @@ class _ChannelReading extends StatelessWidget {
                       avatar: Icon(Icons.straighten, size: 14, color: color),
                       label: Text(
                         displayUnit == DisplayUnit.auto
-                            ? 'Units: Auto'
-                            : 'Units: ${displayUnit.label(units)}',
+                            ? context.l10n.unitsAuto
+                            : context.l10n.unitsValue(displayUnit.label(units)),
                       ),
                     ),
                   ),
@@ -429,11 +435,11 @@ class _ChannelReading extends StatelessWidget {
                             : Icons.swap_vert_outlined,
                         size: compact ? 12 : 14,
                       ),
-                      label: const Text('Min/Max'),
+                      label: Text('Min/Max'),
                       selected: minMaxTracking,
                       tooltip: minMaxTracking
-                          ? 'Stop min/max tracking'
-                          : 'Track minimum and maximum values',
+                          ? context.l10n.stopMinMax
+                          : context.l10n.trackMinMax,
                       onSelected: onMinMaxChanged,
                     ),
                 ],
@@ -441,22 +447,22 @@ class _ChannelReading extends StatelessWidget {
             ),
           if (!hasFreshSample && !compact)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: EdgeInsets.only(top: 6),
               child: Text(
-                'Waiting for a fresh sample',
+                context.l10n.waitingSample,
                 style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
               ),
             )
           else if (possiblyFloating && !compact)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: EdgeInsets.only(top: 6),
               child: Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Icon(Icons.waves, size: 14, color: Colors.amber.shade700),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4),
                   Text(
-                    'Near zero · possibly floating',
+                    context.l10n.possiblyFloating,
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.amber.shade800,
@@ -467,9 +473,9 @@ class _ChannelReading extends StatelessWidget {
             ),
           if (minMaxTracking && minimum != null && maximum != null)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: EdgeInsets.only(top: 6),
               child: Text(
-                'Min ${_formatTrackedValue(minimum!)}   Max ${_formatTrackedValue(maximum!)}',
+                'Min ${_formatTrackedValue(context, minimum!)}   Max ${_formatTrackedValue(context, maximum!)}',
                 style: TextStyle(
                   fontSize: compact ? 9 : 11,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -481,16 +487,16 @@ class _ChannelReading extends StatelessWidget {
     );
   }
 
-  String _formatValue() {
-    if (max == 0) return '0.000';
+  String _formatValue(BuildContext context) {
+    if (max == 0) return context.formatReading(0, digits - 1);
     final double adjusted = value * displayUnit.scaleFor(value).multiplier;
-    return adjusted.toStringAsFixed(digits - 1);
+    return context.formatReading(adjusted, digits - 1);
   }
 
   String _getPrefix() => displayUnit.scaleFor(value).prefix;
 
-  String _formatTrackedValue(double trackedValue) {
+  String _formatTrackedValue(BuildContext context, double trackedValue) {
     final scale = displayUnit.scaleFor(trackedValue);
-    return '${(trackedValue * scale.multiplier).toStringAsFixed(5)}${scale.prefix}$units';
+    return '${context.formatReading(trackedValue * scale.multiplier, 5)}${scale.prefix}$units';
   }
 }

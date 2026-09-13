@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,7 @@ import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 
 // --- Screen-level logging ---
-const String _screenLogPrefix = '[SCAN]';
+String _screenLogPrefix = '[SCAN]';
 void _screenLog(String msg) => debugPrint('$_screenLogPrefix $msg');
 
 /// The main scan screen that lists discovered Mooshimeter devices.
@@ -33,7 +34,7 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   final List<_ScanData> _devices = [];
   bool _isScanning = false;
-  String _scanStatus = 'Tap to scan';
+  String Function(BuildContext) _scanStatus = (context) => context.l10n.tapScan;
   int _deviceCount = 0;
 
   StreamSubscription? _scanSub;
@@ -89,7 +90,7 @@ class _ScanScreenState extends State<ScanScreen> {
     _scanTimeout?.cancel();
     setState(() {
       _isScanning = true;
-      _scanStatus = 'Scanning...';
+      _scanStatus = (context) => context.l10n.scanning;
       _devices.clear();
       _scanningAddresses = [];
       _deviceCount = 0;
@@ -126,10 +127,10 @@ class _ScanScreenState extends State<ScanScreen> {
           }
           _deviceCount = _devices.length;
           if (_deviceCount > 0) {
-            _scanStatus = 'Found $_deviceCount device(s)';
+            _scanStatus = (context) => context.l10n.foundDevices(_deviceCount);
             _screenLog('    _deviceCount=$_deviceCount');
           } else {
-            _scanStatus = 'Scanning...';
+            _scanStatus = (context) => context.l10n.scanning;
           }
         });
       });
@@ -142,7 +143,7 @@ class _ScanScreenState extends State<ScanScreen> {
       if (!mounted) return;
       setState(() {
         _isScanning = false;
-        _scanStatus = 'Error: $e';
+        _scanStatus = (context) => context.l10n.errorMessage(e.toString());
       });
       await _scanSub?.cancel();
       _scanSub = null;
@@ -150,7 +151,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (!mounted) return;
     _screenLog('    scheduling 11s scan timeout...');
-    _scanTimeout = Timer(const Duration(seconds: 11), () {
+    _scanTimeout = Timer(Duration(seconds: 11), () {
       if (!mounted) return;
       _screenLog('>>> timeout reached, calling _stopScan');
       unawaited(_stopScan());
@@ -172,7 +173,7 @@ class _ScanScreenState extends State<ScanScreen> {
     setState(() {
       _isScanning = false;
       if (_deviceCount == 0) {
-        _scanStatus = 'No devices found';
+        _scanStatus = (context) => context.l10n.noneFound;
       }
     });
     _screenLog('<<< _stopScan complete, found=$_deviceCount');
@@ -189,14 +190,15 @@ class _ScanScreenState extends State<ScanScreen> {
     if (!mounted) return;
     setState(() {
       _connectingAddress = _normalizedAddress(device.deviceId);
-      _scanStatus = 'Connecting to ${device.name ?? 'Mooshimeter'}…';
+      _scanStatus = (context) =>
+          context.l10n.connectingTo(device.name ?? 'Mooshimeter');
     });
     _screenLog('    calling widget.onDeviceSelected');
     final connected = await widget.onDeviceSelected(device);
     if (!mounted) return;
     setState(() {
       _connectingAddress = null;
-      if (!connected) _scanStatus = 'Could not connect — try again';
+      if (!connected) _scanStatus = (context) => context.l10n.connectFailed;
     });
     _screenLog('<<< _selectDevice connected=$connected');
   }
@@ -213,7 +215,7 @@ class _ScanScreenState extends State<ScanScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
-        title: const FittedBox(
+        title: FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
           child: Row(
@@ -231,7 +233,7 @@ class _ScanScreenState extends State<ScanScreen> {
             onPressed: _connectingAddress != null
                 ? null
                 : (_isScanning ? _stopScan : _startScan),
-            tooltip: _isScanning ? 'Stop Scan' : 'Scan',
+            tooltip: _isScanning ? context.l10n.stopScan : context.l10n.scan,
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -240,7 +242,10 @@ class _ScanScreenState extends State<ScanScreen> {
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'settings', child: Text('Settings')),
+              PopupMenuItem(
+                value: 'settings',
+                child: Text(context.l10n.settings),
+              ),
             ],
           ),
         ],
@@ -255,24 +260,24 @@ class _ScanScreenState extends State<ScanScreen> {
             child: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
+                constraints: BoxConstraints(maxWidth: 760),
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(16),
                   children: [
                     Text(
-                      'Connect your meter',
+                      context.l10n.connectYourMeter,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     Text(
-                      'Wake your Mooshimeter and keep it nearby.',
+                      context.l10n.wakeMeter,
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20),
                     Card.filled(
                       margin: EdgeInsets.zero,
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -282,15 +287,15 @@ class _ScanScreenState extends State<ScanScreen> {
                                   Icons.bluetooth_searching,
                                   color: colors.primary,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(child: Text(_scanStatus)),
+                                SizedBox(width: 12),
+                                Expanded(child: Text(_scanStatus(context))),
                               ],
                             ),
                             if (_isScanning || busy) ...[
-                              const SizedBox(height: 12),
-                              const LinearProgressIndicator(),
+                              SizedBox(height: 12),
+                              LinearProgressIndicator(),
                             ],
-                            const SizedBox(height: 12),
+                            SizedBox(height: 12),
                             FilledButton.tonalIcon(
                               onPressed: busy
                                   ? null
@@ -299,7 +304,9 @@ class _ScanScreenState extends State<ScanScreen> {
                                 _isScanning ? Icons.stop : Icons.search,
                               ),
                               label: Text(
-                                _isScanning ? 'Stop scanning' : 'Find meters',
+                                _isScanning
+                                    ? context.l10n.stopScanning
+                                    : context.l10n.findMeters,
                               ),
                             ),
                           ],
@@ -307,16 +314,16 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                     ),
                     if (remembered.isNotEmpty) ...[
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24),
                       Text(
-                        'Saved meters',
+                        context.l10n.savedMeters,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       for (final dev in remembered)
                         Card.outlined(
                           child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
+                            contentPadding: EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 8,
                             ),
@@ -329,29 +336,29 @@ class _ScanScreenState extends State<ScanScreen> {
                             ),
                             subtitle: Text(
                               dev.autoConnect
-                                  ? 'Auto-connect enabled'
-                                  : 'Saved · tap to connect',
+                                  ? context.l10n.autoConnectEnabled
+                                  : context.l10n.savedConnect,
                             ),
                             trailing: _isConnecting(dev.address)
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 24,
                                     height: 24,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.chevron_right),
+                                : Icon(Icons.chevron_right),
                             onTap: busy ? null : () => _connectRemembered(dev),
                           ),
                         ),
                     ],
                     if (_connectedDevices.isNotEmpty) ...[
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24),
                       Text(
-                        'Known to this computer',
+                        context.l10n.knownDevices,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       for (final device in _connectedDevices)
                         Card.outlined(
                           child: ListTile(
@@ -360,29 +367,27 @@ class _ScanScreenState extends State<ScanScreen> {
                               color: colors.primary,
                             ),
                             title: Text(device.name ?? 'Mooshimeter'),
-                            subtitle: const Text(
-                              'Open to establish a meter connection',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
+                            subtitle: Text(context.l10n.establishConnection),
+                            trailing: Icon(Icons.chevron_right),
                             onTap: busy ? null : () => _selectDevice(device),
                           ),
                         ),
                     ],
-                    const SizedBox(height: 24),
+                    SizedBox(height: 24),
                     Text(
-                      'Nearby meters',
+                      context.l10n.nearbyMeters,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     if (_devices.isEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: EdgeInsets.symmetric(vertical: 16),
                         child: Text(
                           _isScanning
-                              ? 'Searching for nearby Mooshimeters…'
+                              ? context.l10n.searchingMeters
                               : remembered.isNotEmpty
-                              ? 'Connect a saved meter above, or search for another.'
-                              : 'No meters found yet. Check Bluetooth and try Find meters.',
+                              ? context.l10n.savedHint
+                              : context.l10n.noMeters,
                           style: TextStyle(color: colors.onSurfaceVariant),
                         ),
                       ),
@@ -428,7 +433,7 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         _connectingAddress = target;
         _isScanning = true;
-        _scanStatus = 'Looking for ${dev.name}…';
+        _scanStatus = (context) => context.l10n.lookingFor(dev.name);
       });
     }
 
@@ -447,7 +452,9 @@ class _ScanScreenState extends State<ScanScreen> {
         if (mounted) {
           setState(() {
             _connectingAddress = null;
-            if (!connected) _scanStatus = 'Could not connect — try again';
+            if (!connected) {
+              _scanStatus = (context) => context.l10n.connectFailed;
+            }
           });
         }
         _screenLog('<<< _connectRemembered (connected)');
@@ -488,7 +495,7 @@ class _ScanScreenState extends State<ScanScreen> {
       await UniversalBle.stopScan().catchError(
         (_) => _screenLog('    stopScan error (ignored)'),
       );
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(Duration(milliseconds: 200));
       _screenLog('    starting new scan (5s)');
 
       await UniversalBle.startScan();
@@ -500,7 +507,7 @@ class _ScanScreenState extends State<ScanScreen> {
             )
             .map<BleDevice?>((device) => device)
             .first,
-        Future<BleDevice?>.delayed(const Duration(seconds: 7), () => null),
+        Future<BleDevice?>.delayed(Duration(seconds: 7), () => null),
       ]);
       _screenLog('    scan loop ended, found=${found != null}');
     } catch (e) {
@@ -514,10 +521,14 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (found != null) {
       _screenLog('    calling widget.onDeviceSelected("${found.name}")');
-      if (mounted) setState(() => _scanStatus = 'Connecting to ${dev.name}…');
+      if (mounted) {
+        setState(
+          () => _scanStatus = (context) => context.l10n.connectingTo(dev.name),
+        );
+      }
       final connected = await widget.onDeviceSelected(found);
       if (mounted && !connected) {
-        setState(() => _scanStatus = 'Could not connect — try again');
+        setState(() => _scanStatus = (context) => context.l10n.connectFailed);
       }
       _screenLog('<<< _connectRemembered SUCCESS');
     } else {
@@ -525,7 +536,7 @@ class _ScanScreenState extends State<ScanScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not find "${dev.name}" — is it nearby?'),
+            content: Text(context.l10n.meterNotFound(dev.name)),
             backgroundColor: Colors.orange,
           ),
         );
@@ -545,7 +556,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Device remembered')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.deviceRemembered)));
     }
   }
 
@@ -556,7 +567,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Device forgotten')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.forgotten)));
     }
   }
 }

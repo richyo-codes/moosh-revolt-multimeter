@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -44,28 +45,28 @@ class _GraphScreenState extends State<GraphScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Graph View'),
+        title: Text(context.l10n.graphView),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Live'),
+          tabs: [
+            Tab(text: context.l10n.live),
             Tab(text: 'Ch1'),
             Tab(text: 'Ch2'),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.save_alt),
+            icon: Icon(Icons.save_alt),
             onPressed: _exportData,
-            tooltip: 'Export CSV',
+            tooltip: context.l10n.exportCsv,
           ),
           IconButton(
-            icon: const Icon(Icons.clear_all),
+            icon: Icon(Icons.clear_all),
             onPressed: () => setState(() {
               _ch1Points.clear();
               _ch2Points.clear();
             }),
-            tooltip: 'Clear Data',
+            tooltip: context.l10n.clearData,
           ),
         ],
       ),
@@ -74,7 +75,7 @@ class _GraphScreenState extends State<GraphScreen>
         children: [
           // Live view - both channels
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(12),
             child: RealtimeChart(
               ch1Points: _filterPoints(_ch1Points),
               ch2Points: _filterPoints(_ch2Points),
@@ -84,18 +85,18 @@ class _GraphScreenState extends State<GraphScreen>
           ),
           // Channel 1 only
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(12),
             child: RealtimeChart(
               ch1Points: _filterPoints(_ch1Points),
-              ch2Points: const [],
+              ch2Points: [],
               ch1Color: Colors.red,
             ),
           ),
           // Channel 2 only
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(12),
             child: RealtimeChart(
-              ch1Points: const [],
+              ch1Points: [],
               ch2Points: _filterPoints(_ch2Points),
               ch2Color: Colors.blue,
             ),
@@ -103,23 +104,23 @@ class _GraphScreenState extends State<GraphScreen>
         ],
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(12),
         color: Colors.grey.shade100,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Points: ${_ch1Points.length}',
-              style: const TextStyle(fontSize: 13),
+              context.l10n.points(_ch1Points.length),
+              style: TextStyle(fontSize: 13),
             ),
             Row(
               children: [
                 _durationButton(30),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 _durationButton(60),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 _durationButton(300),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 _durationButton(0),
               ],
             ),
@@ -140,7 +141,7 @@ class _GraphScreenState extends State<GraphScreen>
   Widget _durationButton(int seconds) {
     final isSelected = _graphDuration == seconds;
     return FilterChip(
-      label: Text(seconds == 0 ? 'All' : '$seconds'),
+      label: Text(seconds == 0 ? context.l10n.all : '$seconds'),
       selected: isSelected,
       onSelected: (_) => setState(() => _graphDuration = seconds),
     );
@@ -161,6 +162,6 @@ class _GraphScreenState extends State<GraphScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('Saved ${file.path}')));
+    ).showSnackBar(SnackBar(content: Text(context.l10n.savedPath(file.path))));
   }
 }

@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'package:flutter/material.dart';
 
 /// A list tile showing a discovered Mooshimeter device.
@@ -61,12 +62,12 @@ class DeviceTile extends StatelessWidget {
               right: 0,
               top: 0,
               child: Container(
-                padding: const EdgeInsets.all(1),
+                padding: EdgeInsets.all(1),
                 decoration: BoxDecoration(
                   color: Colors.amber,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.star, size: 8, color: Colors.white),
+                child: Icon(Icons.star, size: 8, color: Colors.white),
               ),
             ),
           // RSSI badge
@@ -75,12 +76,12 @@ class DeviceTile extends StatelessWidget {
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.all(2),
+                padding: EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   color: rssiColor,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.signal_cellular_alt,
                   size: 10,
                   color: Colors.white,
@@ -90,42 +91,47 @@ class DeviceTile extends StatelessWidget {
         ],
       ),
       title: Text(
-        name.isNotEmpty ? name : 'Unknown Device',
-        style: const TextStyle(fontWeight: FontWeight.w500),
+        name.isNotEmpty ? name : context.l10n.unknownDevice,
+        style: TextStyle(fontWeight: FontWeight.w500),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
-            rssi > -999 ? '$address • $rssiLabel ($rssi dBm)' : address,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            rssi > -999
+                ? '$address • ${_rssiLabel(context)} ($rssi dBm)'
+                : address,
+            style: TextStyle(fontFamily: 'monospace', fontSize: 11),
           ),
           if (isRemembered)
             Text(
-              'Remembered — tap to auto-connect',
+              context.l10n.rememberedTap,
               style: TextStyle(fontSize: 11, color: Colors.green.shade700),
             ),
         ],
       ),
       trailing: isConnecting
-          ? const SizedBox(
+          ? SizedBox(
               width: 22,
               height: 22,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : isConnected
-          ? const Chip(
-              label: Text('Connected', style: TextStyle(fontSize: 11)),
+          ? Chip(
+              label: Text(
+                context.l10n.connected,
+                style: TextStyle(fontSize: 11),
+              ),
               visualDensity: VisualDensity.compact,
             )
           : isRemembered
           ? IconButton(
-              icon: const Icon(Icons.check_circle, color: Colors.amber),
+              icon: Icon(Icons.check_circle, color: Colors.amber),
               onPressed: onTap,
-              tooltip: 'Connect',
+              tooltip: context.l10n.connect,
             )
-          : const Icon(Icons.arrow_forward_ios, size: 16),
+          : Icon(Icons.arrow_forward_ios, size: 16),
       onTap: onTap,
       onLongPress: () {
         // Long press shows remember/forget options
@@ -143,8 +149,8 @@ class DeviceTile extends StatelessWidget {
           children: [
             if (isRemembered)
               ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Forget device'),
+                leading: Icon(Icons.delete, color: Colors.red),
+                title: Text(context.l10n.forgetDevice),
                 onTap: () {
                   Navigator.pop(ctx);
                   onForget?.call();
@@ -152,9 +158,9 @@ class DeviceTile extends StatelessWidget {
               ),
             if (!isRemembered)
               ListTile(
-                leading: const Icon(Icons.star, color: Colors.amber),
-                title: const Text('Remember device'),
-                subtitle: const Text('Auto-connect next time'),
+                leading: Icon(Icons.star, color: Colors.amber),
+                title: Text(context.l10n.rememberDevice),
+                subtitle: Text(context.l10n.autoConnectNext),
                 onTap: () {
                   Navigator.pop(ctx);
                   onRemember?.call();
@@ -162,27 +168,27 @@ class DeviceTile extends StatelessWidget {
               ),
             if (!isRemembered && onRemember == null)
               ListTile(
-                leading: const Icon(Icons.star, color: Colors.amber),
-                title: const Text('Remember device'),
-                subtitle: const Text('Auto-connect next time'),
+                leading: Icon(Icons.star, color: Colors.amber),
+                title: Text(context.l10n.rememberDevice),
+                subtitle: Text(context.l10n.autoConnectNext),
                 onTap: () {
                   Navigator.pop(ctx);
                   // Inline remember if no callback provided
                   // (handled by parent via onRemember)
                 },
               ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
     );
   }
 
-  String get rssiLabel {
-    if (rssi >= -50) return 'Excellent';
-    if (rssi >= -60) return 'Good';
-    if (rssi >= -70) return 'Fair';
-    return 'Weak';
+  String _rssiLabel(BuildContext context) {
+    if (rssi >= -50) return context.l10n.excellent;
+    if (rssi >= -60) return context.l10n.good;
+    if (rssi >= -70) return context.l10n.fair;
+    return context.l10n.weak;
   }
 
   Color _rssiColor(int rssi) {

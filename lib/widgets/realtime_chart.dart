@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:moosh_revolt/l10n/localization.dart';
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -103,14 +104,18 @@ class _RealtimeChartState extends State<RealtimeChart> {
                 Flexible(
                   child: _LegendDot(
                     color: widget.ch1Color,
-                    label: widget.ch1Label,
+                    label: (widget.ch1Label == 'Current (A)'
+                        ? context.l10n.currentAxis
+                        : widget.ch1Label),
                   ),
                 ),
                 const SizedBox(width: 24),
                 Flexible(
                   child: _LegendDot(
                     color: widget.ch2Color,
-                    label: widget.ch2Label,
+                    label: (widget.ch2Label == 'Voltage (V)'
+                        ? context.l10n.voltageAxis
+                        : widget.ch2Label),
                   ),
                 ),
               ],
@@ -124,7 +129,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
               child: widget.ch1Points.isEmpty && widget.ch2Points.isEmpty
                   ? Center(
                       child: Text(
-                        'Waiting for samples…',
+                        context.l10n.waitingSamples,
                         style: TextStyle(color: _plotText),
                       ),
                     )
@@ -153,7 +158,9 @@ class _RealtimeChartState extends State<RealtimeChart> {
                   widget.ch1Color,
                   _yMin1,
                   _yMax1,
-                  widget.ch1Label,
+                  (widget.ch1Label == 'Current (A)'
+                      ? context.l10n.currentAxis
+                      : widget.ch1Label),
                 ),
                 duration: const Duration(milliseconds: 100),
               ),
@@ -166,7 +173,9 @@ class _RealtimeChartState extends State<RealtimeChart> {
                   widget.ch2Color,
                   _yMin2,
                   _yMax2,
-                  widget.ch2Label,
+                  (widget.ch2Label == 'Voltage (V)'
+                      ? context.l10n.voltageAxis
+                      : widget.ch2Label),
                 ),
                 duration: const Duration(milliseconds: 100),
               ),
@@ -183,7 +192,9 @@ class _RealtimeChartState extends State<RealtimeChart> {
                 widget.ch1Color,
                 _yMin1,
                 _yMax1,
-                widget.ch1Label,
+                (widget.ch1Label == 'Current (A)'
+                    ? context.l10n.currentAxis
+                    : widget.ch1Label),
                 showGrid: true,
               ),
               duration: const Duration(milliseconds: 100),
@@ -194,7 +205,9 @@ class _RealtimeChartState extends State<RealtimeChart> {
                 widget.ch2Color,
                 _yMin2,
                 _yMax2,
-                widget.ch2Label,
+                (widget.ch2Label == 'Voltage (V)'
+                    ? context.l10n.voltageAxis
+                    : widget.ch2Label),
                 rightAxis: true,
               ),
               duration: const Duration(milliseconds: 100),
@@ -300,7 +313,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
         bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
         leftTitles: AxisTitles(
           axisNameWidget: _axisLabel(
-            '${widget.ch1Label} / ${widget.ch2Label}',
+            '${(widget.ch1Label == 'Current (A)' ? context.l10n.currentAxis : widget.ch1Label)} / ${(widget.ch2Label == 'Voltage (V)' ? context.l10n.voltageAxis : widget.ch2Label)}',
             _plotText,
           ),
           axisNameSize: 20,
@@ -373,7 +386,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
       >= 0.1 => 3,
       _ => 4,
     };
-    return value.toStringAsFixed(decimals);
+    return context.formatReading(value, decimals);
   }
 
   Widget _axisLabel(String label, Color color) => Text(

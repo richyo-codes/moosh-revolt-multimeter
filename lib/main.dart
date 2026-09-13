@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:moosh_revolt/l10n/app_localizations.dart';
 import 'package:universal_ble/universal_ble.dart';
 import 'package:provider/provider.dart';
 import 'package:moosh_revolt/screens/scan_screen.dart';
@@ -49,6 +50,9 @@ class MooshimeterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: settings.locale,
       title: 'MooshRevolt',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,

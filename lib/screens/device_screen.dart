@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -196,7 +197,7 @@ class _DeviceScreenState extends State<DeviceScreen>
           key: _captureKey,
           child: Scaffold(
             appBar: AppBar(
-              title: const FittedBox(
+              title: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Row(
@@ -212,48 +213,48 @@ class _DeviceScreenState extends State<DeviceScreen>
               actions: [
                 _connectionStatusWidget(provider.state, compact: compactAppBar),
                 IconButton(
-                  icon: const Icon(Icons.tune),
+                  icon: Icon(Icons.tune),
                   onPressed: _showDeviceSettings,
-                  tooltip: 'Meter settings',
+                  tooltip: context.l10n.meterSettings,
                 ),
                 PopupMenuButton<String>(
                   onSelected: _handleMenu,
                   itemBuilder: (_) => [
                     if (isConnected)
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'graph',
-                        child: Text('Graph View'),
+                        child: Text(context.l10n.graphView),
                       ),
                     if (isConnected)
                       PopupMenuItem(
                         value: 'graph-style',
-                        child: Text('Graph style: $_graphStyleLabel'),
+                        child: Text(context.l10n.graphStyle(_graphStyleLabel)),
                       ),
                     if (isConnected)
                       PopupMenuItem(
                         value: 'sample-rate',
-                        child: Text('Sample rate: $_sampleRate Hz'),
+                        child: Text(context.l10n.sampleRateValue(_sampleRate)),
                       ),
                     if (isConnected)
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'clear-graph',
-                        child: Text('Clear graph'),
+                        child: Text(context.l10n.clearGraph),
                       ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'copy-cli',
-                      child: Text('Copy CSV logger command'),
+                      child: Text(context.l10n.copyCsv),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'snapshot',
-                      child: Text('Save data snapshot'),
+                      child: Text(context.l10n.saveSnapshot),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'screenshot',
-                      child: Text('Save screenshot'),
+                      child: Text(context.l10n.saveScreenshot),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'disconnect',
-                      child: Text('Disconnect'),
+                      child: Text(context.l10n.disconnect),
                     ),
                   ],
                 ),
@@ -283,7 +284,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final connecting = state == MmConnectionState.connecting;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -292,26 +293,28 @@ class _DeviceScreenState extends State<DeviceScreen>
               size: 56,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Text(
-              connecting ? 'Connecting to meter…' : 'Meter disconnected',
+              connecting
+                  ? context.l10n.connectingMeter
+                  : context.l10n.meterDisconnected,
               style: Theme.of(context).textTheme.titleLarge,
               textAlign: TextAlign.center,
             ),
             if (!connecting) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
-                'The live readings have been cleared. Reconnect to resume sampling.',
+                context.l10n.disconnectedHelp,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: _connectAndRemember,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Reconnect'),
+                icon: Icon(Icons.refresh),
+                label: Text(context.l10n.reconnect),
               ),
             ],
           ],
@@ -330,22 +333,22 @@ class _DeviceScreenState extends State<DeviceScreen>
 
     switch (state) {
       case MmConnectionState.connecting:
-        status = 'Connecting...';
+        status = context.l10n.connecting;
         color = Colors.orange;
         icon = Icons.hourglass_empty;
         break;
       case MmConnectionState.connected:
-        status = 'Connected';
+        status = context.l10n.connected;
         color = Colors.green;
         icon = Icons.bluetooth_connected;
         break;
       case MmConnectionState.disconnecting:
-        status = 'Disconnecting...';
+        status = context.l10n.disconnecting;
         color = Colors.grey;
         icon = Icons.bluetooth_disabled;
         break;
       case MmConnectionState.disconnected:
-        status = 'Disconnected';
+        status = context.l10n.disconnected;
         color = Colors.red;
         icon = Icons.bluetooth_disabled;
         break;
@@ -358,7 +361,7 @@ class _DeviceScreenState extends State<DeviceScreen>
         children: [
           Icon(icon, size: 18, color: color),
           if (!compact) ...[
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
             Text(status, style: TextStyle(color: color, fontSize: 13)),
           ],
         ],
@@ -430,12 +433,14 @@ class _DeviceScreenState extends State<DeviceScreen>
           showCh2: _showCh2,
         );
         final chart = Padding(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(12),
           child: RealtimeChart(
-            ch1Points: _showCh1 ? _ch1Points : const [],
-            ch2Points: _showCh2 ? _ch2Points : const [],
-            ch1Label: 'CH1 · ${_ch1Mode.label} (${_channelUnits(0, _ch1Mode)})',
-            ch2Label: 'CH2 · ${_ch2Mode.label} (${_channelUnits(1, _ch2Mode)})',
+            ch1Points: _showCh1 ? _ch1Points : [],
+            ch2Points: _showCh2 ? _ch2Points : [],
+            ch1Label:
+                'CH1 · ${_ch1Mode.localizedLabel(context)} (${_channelUnits(0, _ch1Mode)})',
+            ch2Label:
+                'CH2 · ${_ch2Mode.localizedLabel(context)} (${_channelUnits(1, _ch2Mode)})',
             style: _graphStyle,
           ),
         );
@@ -445,7 +450,7 @@ class _DeviceScreenState extends State<DeviceScreen>
               Expanded(
                 child: landscapeLayout
                     ? Row(
-                        key: const ValueKey('landscape-meter-layout'),
+                        key: ValueKey('landscape-meter-layout'),
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(flex: 4, child: readings),
@@ -453,7 +458,7 @@ class _DeviceScreenState extends State<DeviceScreen>
                         ],
                       )
                     : Column(
-                        key: const ValueKey('portrait-meter-layout'),
+                        key: ValueKey('portrait-meter-layout'),
                         children: [
                           SizedBox(
                             height: portraitReadingsHeight,
@@ -475,7 +480,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final colors = Theme.of(context).colorScheme;
     final batteryPercent = _batteryPercent(battery);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: EdgeInsets.fromLTRB(12, 0, 12, 6),
       child: Align(
         alignment: Alignment.centerRight,
         child: Wrap(
@@ -491,17 +496,18 @@ class _DeviceScreenState extends State<DeviceScreen>
               ),
             ],
             Tooltip(
-              message:
-                  '${battery.toStringAsFixed(2)} V measured across two AA cells',
+              message: context.l10n.batteryVoltage(
+                context.formatReading(battery, 2),
+              ),
               child: _footerPill(
                 icon: _batteryIcon(batteryPercent),
-                label: 'Battery $batteryPercent%',
+                label: context.l10n.batteryPercent(batteryPercent),
                 colors: colors,
               ),
             ),
             _footerPill(
               icon: Icons.data_usage,
-              label: '$_pointCount samples',
+              label: context.l10n.sampleCount(_pointCount),
               colors: colors,
             ),
           ],
@@ -529,7 +535,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     required ColorScheme colors,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(8),
@@ -538,7 +544,7 @@ class _DeviceScreenState extends State<DeviceScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: colors.onSurfaceVariant),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
@@ -562,7 +568,7 @@ class _DeviceScreenState extends State<DeviceScreen>
         child: SizedBox(
           height: MediaQuery.sizeOf(sheetContext).height * 0.85,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: StatefulBuilder(
               builder: (context, setSheetState) {
                 final mode = isCh1 ? _ch1Mode : _ch2Mode;
@@ -575,20 +581,16 @@ class _DeviceScreenState extends State<DeviceScreen>
                       '$channelName configuration',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
-                      isCh1
-                          ? 'Current, resistance, and auxiliary measurements'
-                          : 'Voltage and auxiliary measurements',
+                      isCh1 ? context.l10n.currentAux : context.l10n.voltageAux,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Show channel'),
-                      subtitle: const Text(
-                        'Include this channel in readings and graph',
-                      ),
+                      title: Text(context.l10n.showChannel),
+                      subtitle: Text(context.l10n.showChannelHelp),
                       value: isVisible,
                       onChanged: (visible) {
                         setState(() {
@@ -602,7 +604,7 @@ class _DeviceScreenState extends State<DeviceScreen>
                       },
                     ),
                     if (isCh1 && mode == ChannelMode.resistance) ...[
-                      const Divider(),
+                      Divider(),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         secondary: Icon(
@@ -610,16 +612,14 @@ class _DeviceScreenState extends State<DeviceScreen>
                               ? Icons.volume_up
                               : Icons.volume_off,
                         ),
-                        title: const Text('Continuity tone'),
-                        subtitle: const Text(
-                          'Play a continuous tone below 50 Ω',
-                        ),
+                        title: Text(context.l10n.continuityTone),
+                        subtitle: Text(context.l10n.continuityHelp),
                         value: _continuityToneEnabled,
                         onChanged: (enabled) {
                           setState(() {
                             _continuityToneEnabled = enabled;
                             _continuityReadyAt = enabled
-                                ? DateTime.now().add(const Duration(seconds: 1))
+                                ? DateTime.now().add(Duration(seconds: 1))
                                 : null;
                           });
                           if (!enabled) {
@@ -630,18 +630,18 @@ class _DeviceScreenState extends State<DeviceScreen>
                         },
                       ),
                     ],
-                    const Divider(),
+                    Divider(),
                     Text(
-                      'Measurement',
+                      context.l10n.measurement,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: _channelModesFor(channel).map((candidate) {
                         return ChoiceChip(
-                          label: Text(candidate.label),
+                          label: Text(candidate.localizedLabel(context)),
                           selected: mode == candidate,
                           onSelected: (selected) async {
                             if (!selected) return;
@@ -651,19 +651,19 @@ class _DeviceScreenState extends State<DeviceScreen>
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20),
                     Text(
-                      'Input range',
+                      context.l10n.inputRange,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       isCh1
                           ? _ch1RangeDescription(mode)
-                          : 'Auto keeps normal measurements on the 60 V input and changes only when needed.',
+                          : context.l10n.autoRangeHelp,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     if (isCh1)
                       ChoiceChip(
                         label: Text(_ch1RangeLabel(mode)),
@@ -672,7 +672,7 @@ class _DeviceScreenState extends State<DeviceScreen>
                       )
                     else if (mode == ChannelMode.internalTemperature)
                       Text(
-                        'Temperature mode does not use a voltage range.',
+                        context.l10n.tempRangeHelp,
                         style: Theme.of(context).textTheme.bodySmall,
                       )
                     else
@@ -681,7 +681,7 @@ class _DeviceScreenState extends State<DeviceScreen>
                         runSpacing: 8,
                         children: [
                           ChoiceChip(
-                            label: const Text('Auto (recommended)'),
+                            label: Text(context.l10n.autoRecommended),
                             selected: _voltageRangeIndex == null,
                             onSelected: (selected) {
                               if (!selected) return;
@@ -691,8 +691,8 @@ class _DeviceScreenState extends State<DeviceScreen>
                             },
                           ),
                           for (final range in [
-                            (0, '60 V input'),
-                            (1, '600 V input'),
+                            (0, context.l10n.input60),
+                            (1, context.l10n.input600),
                           ])
                             ChoiceChip(
                               label: Text(range.$2),
@@ -748,7 +748,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   }
 
   List<ChannelMode> _channelModesFor(int channel) => channel == 0
-      ? const [
+      ? [
           ChannelMode.current,
           ChannelMode.currentAc,
           ChannelMode.internalTemperature,
@@ -757,7 +757,7 @@ class _DeviceScreenState extends State<DeviceScreen>
           ChannelMode.resistance,
           ChannelMode.diode,
         ]
-      : const [
+      : [
           ChannelMode.voltage,
           ChannelMode.voltageAc,
           ChannelMode.internalTemperature,
@@ -787,20 +787,19 @@ class _DeviceScreenState extends State<DeviceScreen>
   String _ch1RangeLabel(ChannelMode mode) => switch (mode) {
     ChannelMode.current => '10 A input',
     ChannelMode.resistance => '1 kΩ input',
-    _ => 'Default input range',
+    _ => context.l10n.defaultRange,
   };
 
   String _ch1RangeDescription(ChannelMode mode) => switch (mode) {
-    ChannelMode.current => 'CH1 current uses the 10 A input range.',
-    ChannelMode.resistance =>
-      'Resistance and continuity use the 1 kΩ input range.',
-    _ => 'This measurement uses the meter default range.',
+    ChannelMode.current => context.l10n.currentRangeHelp,
+    ChannelMode.resistance => context.l10n.resistanceRangeHelp,
+    _ => context.l10n.defaultRangeHelp,
   };
 
   String get _graphStyleLabel => switch (_graphStyle) {
-    GraphStyle.split => 'Split',
-    GraphStyle.dualAxis => 'Dual axis',
-    GraphStyle.sharedAxis => 'Shared',
+    GraphStyle.split => context.l10n.split,
+    GraphStyle.dualAxis => context.l10n.dualAxis,
+    GraphStyle.sharedAxis => context.l10n.shared,
   };
 
   void _onBleProviderChanged() {
@@ -820,10 +819,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     // debounce would continually restart when the meter (or mock provider)
     // publishes faster than its delay, leaving the graph permanently empty.
     if (_sampleDebounce?.isActive ?? false) return;
-    _sampleDebounce = Timer(
-      const Duration(milliseconds: 30),
-      _captureLatestReading,
-    );
+    _sampleDebounce = Timer(Duration(milliseconds: 30), _captureLatestReading);
   }
 
   void _captureLatestReading() {
@@ -994,7 +990,7 @@ class _DeviceScreenState extends State<DeviceScreen>
 
   Future<void> _saveRows(List<String> rows, String kind) async {
     if (rows.length <= 1) {
-      _showMessage('No samples to save');
+      _showMessage(context.l10n.noSamples);
       return;
     }
     final directory = await _recordsDirectory();
@@ -1002,7 +998,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       '${directory.path}/mooshimeter_${kind}_${_timestampName()}.csv',
     );
     await file.writeAsString('${rows.join('\n')}\n');
-    _showMessage('Saved ${file.path}');
+    if (mounted) _showMessage(context.l10n.savedPath(file.path));
   }
 
   Future<void> _saveScreenshot() async {
@@ -1017,7 +1013,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final directory = await _recordsDirectory();
     final file = File('${directory.path}/mooshimeter_${_timestampName()}.png');
     await file.writeAsBytes(data.buffer.asUint8List());
-    _showMessage('Saved ${file.path}');
+    if (mounted) _showMessage(context.l10n.savedPath(file.path));
   }
 
   void _showMessage(String message) {
@@ -1031,13 +1027,13 @@ class _DeviceScreenState extends State<DeviceScreen>
     return Consumer<BleProvider>(
       builder: (context, provider, _) {
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           children: [
-            const Text(
-              'Sample Rate',
+            Text(
+              context.l10n.sampleRate,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Wrap(
               spacing: 8,
               children: [125, 250, 500, 1000, 2000, 4000, 8000].map((rate) {
@@ -1054,9 +1050,9 @@ class _DeviceScreenState extends State<DeviceScreen>
                 );
               }).toList(),
             ),
-            const Divider(height: 32),
-            const Text(
-              'SD Card Logging',
+            Divider(height: 32),
+            Text(
+              context.l10n.sdLogging,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             ListTile(
@@ -1065,24 +1061,30 @@ class _DeviceScreenState extends State<DeviceScreen>
                 provider.sdCardReady ? Icons.sd_card : Icons.sd_card_alert,
                 color: provider.sdCardReady ? Colors.green : Colors.orange,
               ),
-              title: Text(provider.sdCardStatusLabel),
+              title: Text(
+                (provider.sdLogStatus == null
+                    ? context.l10n.statusUnchecked
+                    : provider.sdCardReady
+                    ? context.l10n.ready
+                    : context.l10n.cardUnavailable(provider.sdLogStatus!)),
+              ),
               subtitle: Text(
                 provider.sdLogStatus == null
-                    ? 'Tap refresh to check the meter’s microSD card.'
+                    ? context.l10n.sdRefreshHint
                     : provider.sdCardReady
-                    ? 'Card detected. The meter can log while disconnected.'
-                    : 'Insert a FAT/FAT32 microSD card and refresh.',
+                    ? context.l10n.sdDetected
+                    : context.l10n.sdInsert,
               ),
               trailing: IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh SD-card status',
+                icon: Icon(Icons.refresh),
+                tooltip: context.l10n.refreshSd,
                 onPressed: () => unawaited(provider.refreshSdLogging()),
               ),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Log measurements to SD card'),
-              subtitle: const Text('Logging continues after disconnecting.'),
+              title: Text(context.l10n.logToSd),
+              subtitle: Text(context.l10n.loggingContinues),
               value: provider.sdLoggingEnabled,
               onChanged: provider.sdCardReady
                   ? (enabled) =>
@@ -1090,13 +1092,13 @@ class _DeviceScreenState extends State<DeviceScreen>
                   : null,
             ),
             if (provider.sdCardReady) ...[
-              const Text('Logging interval'),
-              const SizedBox(height: 8),
+              Text(context.l10n.loggingInterval),
+              SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 children: [1, 10, 60].map((seconds) {
                   return ChoiceChip(
-                    label: Text(seconds == 1 ? '1 second' : '$seconds seconds'),
+                    label: Text(context.l10n.seconds(seconds)),
                     selected: provider.sdLogIntervalSeconds == seconds,
                     onSelected: (selected) {
                       if (selected) {
@@ -1106,20 +1108,18 @@ class _DeviceScreenState extends State<DeviceScreen>
                   );
                 }).toList(),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Set a safe fixed input range before logging; the meter does not autorange while logging.',
-                ),
+                child: Text(context.l10n.loggingRangeHelp),
               ),
             ],
-            const Divider(height: 32),
+            Divider(height: 32),
             // Device management
-            const Text(
-              'Device',
+            Text(
+              context.l10n.device,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             FutureBuilder<RememberedDevice?>(
               future: _fetchRemembered(),
               builder: (context, snapshot) {
@@ -1129,9 +1129,12 @@ class _DeviceScreenState extends State<DeviceScreen>
                     Expanded(
                       child: Text(
                         isRemembered
-                            ? 'Remembered: ${snapshot.data!.name} (${snapshot.data!.address})'
-                            : 'Not remembered',
-                        style: const TextStyle(fontSize: 13),
+                            ? context.l10n.rememberedMeter(
+                                snapshot.data!.name,
+                                snapshot.data!.address,
+                              )
+                            : context.l10n.notRemembered,
+                        style: TextStyle(fontSize: 13),
                       ),
                     ),
                     isRemembered
@@ -1139,15 +1142,20 @@ class _DeviceScreenState extends State<DeviceScreen>
                             onPressed: () async {
                               final settings = context.read<SettingsProvider>();
                               final address = widget.device.deviceId;
-                              final devName = snapshot.data?.name ?? 'Device';
+                              final devName =
+                                  snapshot.data?.name ?? context.l10n.device;
                               await settings.unrememberDevice(address);
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('$devName forgotten')),
+                                  SnackBar(
+                                    content: Text(
+                                      context.l10n.deviceForgotten(devName),
+                                    ),
+                                  ),
                                 );
                               }
                             },
-                            child: const Text('Forget'),
+                            child: Text(context.l10n.forget),
                           )
                         : TextButton(
                             onPressed: () async {
@@ -1157,13 +1165,15 @@ class _DeviceScreenState extends State<DeviceScreen>
                               await settings.rememberDevice(address, name);
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Device remembered'),
+                                  SnackBar(
+                                    content: Text(
+                                      context.l10n.deviceRemembered,
+                                    ),
                                   ),
                                 );
                               }
                             },
-                            child: const Text('Remember'),
+                            child: Text(context.l10n.remember),
                           ),
                   ],
                 );
@@ -1180,7 +1190,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('Device settings')),
+          appBar: AppBar(title: Text(context.l10n.deviceSettings)),
           body: _buildSettingsTab(),
         ),
       ),
@@ -1233,7 +1243,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final style = await showDialog<GraphStyle>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Graph style'),
+        title: Text(context.l10n.graphStyleTitle),
         children: GraphStyle.values
             .map(
               (style) => ListTile(
@@ -1256,7 +1266,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final rate = await showDialog<int>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Sample rate'),
+        title: Text(context.l10n.sampleRateTitle),
         children: [125, 250, 500, 1000, 2000, 4000, 8000]
             .map(
               (rate) => ListTile(
@@ -1279,9 +1289,9 @@ class _DeviceScreenState extends State<DeviceScreen>
   }
 
   String _graphStyleLabelFor(GraphStyle style) => switch (style) {
-    GraphStyle.split => 'Split channels',
-    GraphStyle.dualAxis => 'Dual axis',
-    GraphStyle.sharedAxis => 'Shared axis',
+    GraphStyle.split => context.l10n.splitChannels,
+    GraphStyle.dualAxis => context.l10n.dualAxis,
+    GraphStyle.sharedAxis => context.l10n.sharedAxis,
   };
 
   Future<void> _copyCliCommand() async {
@@ -1292,9 +1302,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       (false, false) => null,
     };
     if (channel == null) {
-      _showMessage(
-        'Enable at least one channel before copying a logger command',
-      );
+      _showMessage(context.l10n.enableForCsv);
       return;
     }
     final command =

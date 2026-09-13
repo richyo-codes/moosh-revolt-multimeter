@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/l10n/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
@@ -10,74 +11,88 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(context.l10n.settings)),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(16),
             children: [
+              ListTile(
+                title: Text(context.l10n.language),
+                leading: const Icon(Icons.language),
+                trailing: DropdownButton<String>(
+                  value: settings.locale?.languageCode ?? 'system',
+                  onChanged: (value) =>
+                      settings.languageCode = value == 'system' ? null : value,
+                  items: [
+                    DropdownMenuItem(
+                      value: 'system',
+                      child: Text(context.l10n.systemLanguage),
+                    ),
+                    const DropdownMenuItem(value: 'en', child: Text('English')),
+                    const DropdownMenuItem(
+                      value: 'fr',
+                      child: Text('Français'),
+                    ),
+                  ],
+                ),
+              ),
               // --- Connection ---
-              const Text(
-                'Connection',
+              Text(
+                context.l10n.connection,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               SwitchListTile(
-                title: const Text('Auto-connect on launch'),
-                subtitle: const Text(
-                  'Automatically reconnect to last remembered device',
-                ),
+                title: Text(context.l10n.autoConnect),
+                subtitle: Text(context.l10n.autoConnectHelp),
                 value: settings.autoConnect,
                 onChanged: (v) => settings.autoConnect = v,
               ),
               SwitchListTile(
-                title: const Text('Skip firmware check'),
-                subtitle: const Text('Skip OAD firmware update prompt'),
+                title: Text(context.l10n.skipFirmware),
+                subtitle: Text(context.l10n.skipFirmwareHelp),
                 value: settings.skipUpgrade,
                 onChanged: (v) => settings.skipUpgrade = v,
               ),
 
-              const Divider(height: 32),
+              Divider(height: 32),
 
               // --- Appearance ---
-              const Text(
-                'Appearance',
+              Text(
+                context.l10n.appearance,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               SwitchListTile(
-                title: const Text('Dark mode'),
-                subtitle: const Text(
-                  'Use a dark color scheme throughout the app',
-                ),
+                title: Text(context.l10n.darkMode),
+                subtitle: Text(context.l10n.darkModeHelp),
                 value: settings.themeMode == ThemeMode.dark,
                 onChanged: (_) => settings.toggleTheme(),
               ),
               SwitchListTile(
-                title: const Text('Show values for floating probes'),
-                subtitle: const Text(
-                  'Keep displaying near-zero readings when a probe may be unconnected',
-                ),
+                title: Text(context.l10n.showFloating),
+                subtitle: Text(context.l10n.showFloatingHelp),
                 value: settings.showFloatingReadings,
                 onChanged: (value) => settings.showFloatingReadings = value,
               ),
 
-              const Divider(height: 32),
+              Divider(height: 32),
 
               // --- Remembered Devices ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Remembered Devices',
+                  Text(
+                    context.l10n.rememberedDevices,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -90,12 +105,12 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               if (settings.rememberedDevices.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(left: 16, bottom: 16),
                   child: Text(
-                    'No devices remembered yet. Connect to a device and tap "Remember" to save it.',
+                    context.l10n.noRemembered,
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
@@ -107,25 +122,25 @@ class SettingsScreen extends StatelessWidget {
                     background: Container(
                       color: Colors.red.shade300,
                       alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 16),
-                      child: const Icon(Icons.delete, color: Colors.white),
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.delete, color: Colors.white),
                     ),
                     confirmDismiss: (direction) async {
                       return await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              title: const Text('Forget device?'),
+                              title: Text(context.l10n.forgetQuestion),
                               content: Text(
-                                'Remove "${dev.name}" from remembered devices?',
+                                context.l10n.removeDevice(dev.name),
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Cancel'),
+                                  child: Text(context.l10n.cancel),
                                 ),
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, true),
-                                  child: const Text('Forget'),
+                                  child: Text(context.l10n.forget),
                                 ),
                               ],
                             ),
@@ -136,29 +151,39 @@ class SettingsScreen extends StatelessWidget {
                       await settings.unrememberDevice(dev.address);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${dev.name} forgotten')),
+                          SnackBar(
+                            content: Text(
+                              context.l10n.deviceForgotten(dev.name),
+                            ),
+                          ),
                         );
                       }
                     },
                     child: Card(
-                      margin: const EdgeInsets.only(bottom: 8),
+                      margin: EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: const Icon(Icons.bluetooth),
+                        leading: Icon(Icons.bluetooth),
                         title: Text(
-                          dev.name.isNotEmpty ? dev.name : 'Unknown Device',
+                          dev.name.isNotEmpty
+                              ? dev.name
+                              : context.l10n.unknownDevice,
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               dev.address,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 11,
                               ),
                             ),
                             Text(
-                              'Remembered: ${dev.rememberedAt.toLocaleStringShort()}',
+                              context.l10n.rememberedDate(
+                                MaterialLocalizations.of(
+                                  context,
+                                ).formatMediumDate(dev.rememberedAt),
+                              ),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey.shade600,
@@ -170,7 +195,7 @@ class SettingsScreen extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (dev.autoConnect)
-                              const Icon(
+                              Icon(
                                 Icons.flash_on,
                                 color: Colors.amber,
                                 size: 18,
@@ -192,20 +217,20 @@ class SettingsScreen extends StatelessWidget {
                   );
                 }),
 
-              const Divider(height: 32),
+              Divider(height: 32),
 
               // --- Data Collection ---
-              const Text(
-                'Data Collection',
+              Text(
+                context.l10n.dataCollection,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               ListTile(
-                title: const Text('Default sample rate'),
+                title: Text(context.l10n.defaultSampleRate),
                 subtitle: Text('${settings.sampleRate} Hz'),
                 trailing: PopupMenuButton<int>(
                   onSelected: (rate) => settings.sampleRate = rate,
@@ -215,7 +240,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               ListTile(
-                title: const Text('Max graph points'),
+                title: Text(context.l10n.maxGraphPoints),
                 subtitle: Text('${settings.graphMaxPoints}'),
                 trailing: PopupMenuButton<int>(
                   onSelected: (points) => settings.graphMaxPoints = points,
@@ -224,31 +249,31 @@ class SettingsScreen extends StatelessWidget {
                       .toList(),
                 ),
               ),
-              const Divider(height: 32),
+              Divider(height: 32),
 
               // --- About ---
-              const Text(
-                'About',
+              Text(
+                context.l10n.about,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('MooshRevolt'),
-                subtitle: const Text('Version 1.0.0'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
-                ),
+                leading: Icon(Icons.info_outline),
+                title: Text('MooshRevolt'),
+                subtitle: Text('Version 1.0.0'),
+                trailing: Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => AboutScreen())),
               ),
               ListTile(
-                title: const Text('BLE Service UUIDs'),
-                subtitle: const Text('1BC5FFA0-0200-62AB-E411-F254E005DBD4'),
-                trailing: const Icon(Icons.copy, size: 16),
+                title: Text(context.l10n.serviceUuids),
+                subtitle: Text('1BC5FFA0-0200-62AB-E411-F254E005DBD4'),
+                trailing: Icon(Icons.copy, size: 16),
                 onTap: () {
                   // TODO: Clipboard copy
                 },
@@ -258,26 +283,5 @@ class SettingsScreen extends StatelessWidget {
         },
       ),
     );
-  }
-}
-
-/// Short date formatter.
-extension on DateTime {
-  String toLocaleStringShort() {
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[month - 1]} $day, ${year.toString().substring(2)} ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 }

@@ -16,6 +16,20 @@ class SettingsProvider extends ChangeNotifier {
   int _graphMaxPoints = 300;
   bool _darkMode = false;
   bool _showFloatingReadings = false;
+  String? _languageCode;
+
+  Locale? get locale => _languageCode == null ? null : Locale(_languageCode!);
+
+  set languageCode(String? value) {
+    if (value != null && !['en', 'fr'].contains(value)) return;
+    _languageCode = value;
+    if (value == null) {
+      _prefs?.remove('language_code');
+    } else {
+      _prefs?.setString('language_code', value);
+    }
+    notifyListeners();
+  }
 
   // --- Remembered Devices ---
   List<RememberedDevice> _rememberedDevices = [];
@@ -36,6 +50,8 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+    final savedLanguage = _prefs?.getString('language_code');
+    _languageCode = ['en', 'fr'].contains(savedLanguage) ? savedLanguage : null;
 
     _autoConnect = _prefs?.getBool('autoconnect') ?? true;
     _skipUpgrade = _prefs?.getBool('skip_upgrade') ?? false;
