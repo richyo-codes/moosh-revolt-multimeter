@@ -64,22 +64,26 @@ jobs:
           EOF
       - run: flutter build linux --release
       - run: flutter build apk --release
-      - name: Install Flatpak tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes flatpak flatpak-builder
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk/x86_64/25.08 org.freedesktop.Platform/x86_64/25.08
-      - name: Build Flatpak bundle
-        run: ./tools/build_flatpak.sh
       - name: Package Linux bundle
         run: |
           tar -C build/linux/x64/release -czf mooshrevolt-linux-x64.tar.gz bundle
           sha256sum mooshrevolt-linux-x64.tar.gz > mooshrevolt-linux-x64.tar.gz.sha256
           cp build/app/outputs/flutter-apk/app-release.apk mooshrevolt-android.apk
           sha256sum mooshrevolt-android.apk > mooshrevolt-android.apk.sha256
-          cp build/ca.richyoung.mooshrevolt.flatpak mooshrevolt.flatpak
-          sha256sum mooshrevolt.flatpak > mooshrevolt.flatpak.sha256
+      - uses: actions/upload-artifact@v6
+        if: github.server_url == 'https://github.com'
+        with:
+          name: flatpak-linux-input
+          path: mooshrevolt-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v3
+        if: github.server_url != 'https://github.com'
+        with:
+          name: flatpak-linux-input
+          path: mooshrevolt-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
       - name: Create draft GitHub release
         if: github.server_url == 'https://github.com'
         uses: softprops/action-gh-release@v3
@@ -92,8 +96,6 @@ jobs:
             mooshrevolt-linux-x64.tar.gz.sha256
             mooshrevolt-android.apk
             mooshrevolt-android.apk.sha256
-            mooshrevolt.flatpak
-            mooshrevolt.flatpak.sha256
       - name: Create Gitea release and upload assets
         if: github.server_url != 'https://github.com'
         env:
@@ -114,5 +116,62 @@ jobs:
             curl --fail-with-body --request POST \
               --header "Authorization: token $GITEA_TOKEN" \
               --upload-file "$asset" \
+              "$GITEA_API_URL/repos/$REPOSITORY/releases/$release_id/assets?name=$asset"
+          done
+
+  flatpak:
+    needs: linux-release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - uses: actions/download-artifact@v8
+        if: github.server_url == 'https://github.com'
+        with:
+          name: flatpak-linux-input
+      - uses: actions/download-artifact@v3
+        if: github.server_url != 'https://github.com'
+        with:
+          name: flatpak-linux-input
+      - name: Extract Linux bundle
+        run: |
+          mkdir -p build/linux/x64/release
+          tar -xzf mooshrevolt-linux-x64.tar.gz -C build/linux/x64/release
+      - name: Install Flatpak tooling
+        run: |
+          if command -v sudo >/dev/null; then SUDO=sudo; else SUDO=''; fi
+          $SUDO apt-get update
+          $SUDO apt-get install --yes flatpak flatpak-builder
+      - name: Build Flatpak bundle
+        run: |
+          ./tools/build_flatpak.sh --skip-build
+          cp build/ca.richyoung.mooshrevolt.flatpak mooshrevolt.flatpak
+          sha256sum mooshrevolt.flatpak > mooshrevolt.flatpak.sha256
+      - name: Attach Flatpak to GitHub draft release
+        if: github.server_url == 'https://github.com'
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            mooshrevolt.flatpak
+            mooshrevolt.flatpak.sha256
+      - name: Attach Flatpak to Gitea release
+        if: github.server_url != 'https://github.com'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_API_URL: ${{ github.server_url }}/api/v1
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          release_json=$(curl --fail-with-body --header "Authorization: token $GITEA_TOKEN" "$GITEA_API_URL/repos/$REPOSITORY/releases/tags/$TAG")
+          release_id=$(printf '%s' "$release_json" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+          test -n "$release_id"
+          for asset in mooshrevolt.flatpak mooshrevolt.flatpak.sha256; do
+            curl --fail-with-body --request POST \
+              --header "Authorization: token $GITEA_TOKEN" \
+              --form "attachment=@$asset" \
               "$GITEA_API_URL/repos/$REPOSITORY/releases/$release_id/assets?name=$asset"
           done

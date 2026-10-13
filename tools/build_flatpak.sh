@@ -22,12 +22,13 @@ if ! command -v flatpak >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v flutter >/dev/null 2>&1; then
-  echo "flutter not found in PATH." >&2
-  exit 1
+if [[ "${1:-}" != "--skip-build" ]]; then
+  if ! command -v flutter >/dev/null 2>&1; then
+    echo "flutter not found in PATH." >&2
+    exit 1
+  fi
+  flutter build linux --release
 fi
-
-flutter build linux --release
 
 if [[ ! -x "$ROOT_DIR/build/linux/x64/release/bundle/mooshrevolt" ]]; then
   echo "Expected Flutter bundle missing: build/linux/x64/release/bundle/mooshrevolt" >&2
@@ -44,7 +45,6 @@ if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
   fi
 fi
 
-flatpak-builder "${BUILDER_ARGS[@]}" "$BUILD_DIR" "$MANIFEST"
 flatpak-builder "${BUILDER_ARGS[@]}" --repo="$REPO_DIR" "$BUILD_DIR" "$MANIFEST"
 flatpak build-bundle "$REPO_DIR" "$BUNDLE_PATH" "$APP_ID"
 
