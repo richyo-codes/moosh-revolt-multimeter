@@ -15,6 +15,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           lfs: true
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Verify Android toolchain
+        run: |
+          java -version
+          sdkmanager --version
+          test -d "$ANDROID_HOME"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.1'
@@ -68,11 +80,13 @@ jobs:
           sha256sum mooshrevolt-android.apk > mooshrevolt-android.apk.sha256
           cp build/ca.richyoung.mooshrevolt.flatpak mooshrevolt.flatpak
           sha256sum mooshrevolt.flatpak > mooshrevolt.flatpak.sha256
-      - name: Publish GitHub release
+      - name: Create draft GitHub release
         if: github.server_url == 'https://github.com'
         uses: softprops/action-gh-release@v3
         with:
+          draft: true
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             mooshrevolt-linux-x64.tar.gz
             mooshrevolt-linux-x64.tar.gz.sha256
