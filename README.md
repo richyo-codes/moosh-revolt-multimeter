@@ -28,7 +28,7 @@ configuration-tree BLE protocol. It is not affiliated with Mooshim Engineering.
 
 ## Get started
 
-See [Installation](docs/installation.md) for Linux bundles, Android APKs, macOS,
+See [Installation](docs/installation.md) for Linux bundles, Android APKs, the macOS disk image,
 building from source, and mock development mode. [Measurements](docs/measurements.md)
 explains the modes, ranges, overload, zero, continuity, and diode drop.
 

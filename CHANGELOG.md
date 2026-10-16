@@ -14,6 +14,10 @@ All notable changes to this project are documented here.
 - Auto-ranging over the meter's ranges, overload (OL) display, a per-channel
   zero offset, and automatic sample rate (125 Hz DC, 4 kHz AC).
 - Prometheus exporter at `/metrics` (Settings → Integrations).
+- A new app icon showing the Mooshimeter's translucent body and copper jacks,
+  generated for every platform from one SVG.
+- A drag-to-install macOS disk image (`tools/build_dmg.sh`), attached to
+  tagged releases and optionally signed and notarized.
 - Resizable readings/chart split, chart time axis, chart history window
   (10 s – 1 h), and a continuity graph.
 - Saved preferences for channel visibility, modes, units, graph style,

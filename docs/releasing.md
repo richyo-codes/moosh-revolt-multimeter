@@ -16,6 +16,34 @@ For Gitea, enable repository Actions and register an Act Runner with Docker
 access. Configure a `GITEA_TOKEN` repository secret with release-creation
 permission.
 
+On GitHub, tagged releases also attach `MooshRevolt-<version>-macos.dmg`,
+built by [`tools/build_dmg.sh`](../tools/build_dmg.sh). The image is signed
+and notarized when these optional secrets are set; without them it carries
+an ad-hoc signature and users allow it once in System Settings:
+
+- `MACOS_CERTIFICATE_P12_BASE64` and `MACOS_CERTIFICATE_PASSWORD`: a
+  "Developer ID Application" certificate exported as `.p12`
+- `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` (an app-specific
+  password) for notarization
+
+## App icon
+
+Every platform icon is rendered from
+[`assets/branding/mooshrevolt_icon.svg`](../assets/branding/mooshrevolt_icon.svg),
+which shows the Mooshimeter's translucent body, board and copper jacks. After
+changing it, regenerate the macOS, Linux/Flatpak, Android, web and Windows
+icons and the in-app logo:
+
+```sh
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib \
+  uv run --with cairosvg --with pillow tools/generate_icons.py
+```
+
+The script needs the Cairo library (`brew install cairo`, or `libcairo2` on
+Debian/Ubuntu).
+
+## Android signing
+
 Tagged Android releases require these repository secrets:
 
 - `ANDROID_KEYSTORE_BASE64`

@@ -102,3 +102,60 @@ jobs:
               --upload-file "$asset" \
               "$GITEA_API_URL/repos/$REPOSITORY/releases/$release_id/assets?name=$asset"
           done
+
+  macos-release:
+    # Gitea's Docker-based runner has no macOS host. The job runs after the
+    # Linux job so it adds the disk image to the release that job created.
+    if: github.server_url == 'https://github.com'
+    needs: linux-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: false
+      - run: flutter pub get
+      - name: Import Developer ID certificate
+        # Optional: without these secrets the image ships with the ad-hoc
+        # signature and users allow it once in System Settings.
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE_P12_BASE64" ]; then
+            echo "No signing certificate configured; building an ad-hoc signed image."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain
+          identity=$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$APPLE_ID" ]; then
+            xcrun notarytool store-credentials mooshrevolt \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" --keychain "$keychain"
+            echo "NOTARY_PROFILE=mooshrevolt" >> "$GITHUB_ENV"
+          fi
+      - name: Build disk image
+        run: ./tools/build_dmg.sh
+      - name: Attach disk image to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            build/MooshRevolt-*-macos.dmg
+            build/MooshRevolt-*-macos.dmg.sha256

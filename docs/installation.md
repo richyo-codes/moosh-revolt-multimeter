@@ -52,9 +52,24 @@ Tagged releases use the CI release keystore instead.
 ## macOS
 
 MooshRevolt runs on macOS 12 or later, including macOS 27, using Core
-Bluetooth. No pairing is needed. On first launch, macOS asks for Bluetooth
-permission; allow it, or enable MooshRevolt later under
-System Settings > Privacy & Security > Bluetooth.
+Bluetooth. No pairing is needed.
+
+### Install
+
+1. Download `MooshRevolt-<version>-macos.dmg` from the release page.
+2. Open the disk image and drag **MooshRevolt** to **Applications**.
+3. Open MooshRevolt from Applications. When macOS asks for Bluetooth
+   access, allow it. You can also allow it later under
+   System Settings > Privacy & Security > Bluetooth.
+
+Release images are signed and notarized only when the release workflow has
+Apple Developer ID secrets (see [Releases](releasing.md)). Otherwise macOS
+blocks the first launch because the app is from an unidentified developer.
+To allow it, open System Settings > Privacy & Security, scroll to the
+message about MooshRevolt, and select **Open Anyway**. You need to do this
+only once.
+
+### Build from source
 
 Building from source requires Xcode. Select it and accept its license once:
 
@@ -69,6 +84,7 @@ Then build and run:
 flutter pub get
 flutter run -d macos
 flutter build macos --release   # build/macos/Build/Products/Release/MooshRevolt.app
+./tools/build_dmg.sh            # build/MooshRevolt-<version>-macos.dmg
 ```
 
 The app is sandboxed. CSV snapshots and screenshots are saved to
