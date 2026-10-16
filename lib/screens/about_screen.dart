@@ -55,7 +55,7 @@ class AboutScreen extends StatelessWidget {
                 'There was no dedicated Linux desktop app, existing libsigrok '
                 'support could be unreliable, and the original Android experience '
                 'was not designed for current devices. MooshRevolt brings the '
-                'meter to a shared Flutter codebase for Linux and Android.',
+                'meter to a shared Flutter codebase for Linux, Android, and macOS.',
               ),
               const SizedBox(height: 24),
               Text('License', style: Theme.of(context).textTheme.titleMedium),

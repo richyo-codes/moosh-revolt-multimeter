@@ -19,10 +19,10 @@ to use: a modern Android client and a proper Linux desktop application.
 
 MooshRevolt is an independent, open-source companion for Mooshimeter V.1:
 
-- Modern Android and Linux desktop UI
+- Modern Android, Linux, and macOS UI
 - Live dual-channel voltage and current measurements
 - Graphing with independent channel visibility and display units
-- Continuity mode with an audible tone on Linux
+- Continuity mode with an audible tone on Android, Linux, and macOS
 - Recording, snapshots, screenshots, and CSV logging
 - A pure-Dart Linux/BlueZ CLI for unattended data capture
 
@@ -31,13 +31,13 @@ ownership, endorsement, or firmware support beyond what has been tested.
 
 Suggested short description:
 
-> A modern Android and Linux desktop client for the Mooshimeter Bluetooth LE
+> A modern Android, Linux, and macOS client for the Mooshimeter Bluetooth LE
 > multimeter.
 
 Suggested longer description:
 
 > A practical open-source companion for the Mooshimeter V.1, built with Flutter
-> for modern Android and Linux desktop use. Capture live voltage and current,
+> for modern Android, Linux, and macOS use. Capture live voltage and current,
 > inspect trends, check continuity, record measurements, and log CSV data from
 > the same device.
 
