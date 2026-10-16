@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// The MooshRevolt M-and-lightning brand mark.
+/// The MooshRevolt logo: the Mooshimeter's translucent pill body with its
+/// board and copper jacks (rendered from assets/branding/mooshrevolt_icon.svg).
 class MooshRevoltMark extends StatelessWidget {
   const MooshRevoltMark({super.key, this.size = 28});
 
