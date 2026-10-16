@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/widgets/realtime_chart.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/screens/device_screen.dart';
@@ -136,6 +137,7 @@ void main() {
     expect(find.text('Continuity tone'), findsNothing);
     final resistance = find.byKey(const ValueKey('quantity-Resistance'));
     await tester.ensureVisible(resistance);
+    await tester.pumpAndSettle();
     await tester.tap(resistance);
     await tester.pumpAndSettle();
 
@@ -175,6 +177,28 @@ void main() {
     expect(find.text('Auto · 60 V'), findsNWidgets(2));
     expect(find.text('60 V'), findsOneWidget);
     expect(find.text('600 V'), findsOneWidget);
+  });
+
+  testWidgets('voltage asked for on CH1 is set up on CH2 (the V jack)', (
+    tester,
+  ) async {
+    final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
+    // CH2 is busy with something else, as when the user first chose
+    // resistance there.
+    await provider.setInput(1, ChannelMode.internalTemperature.input);
+    await pumpDevice(tester, size: const Size(1280, 800), provider: provider);
+
+    await tester.tap(find.byTooltip('Configure CH1 · Current DC'));
+    await tester.pumpAndSettle();
+    expect(find.text('Voltage → CH2'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('quantity-Voltage')));
+    await tester.pumpAndSettle();
+
+    expect(provider.input(1), ChannelMode.voltage.input);
+    expect(provider.input(0), ChannelMode.current.input);
+    expect(find.text('CH2 configuration'), findsOneWidget);
+    expect(find.textContaining('measured on CH2'), findsWidgets);
   });
 
   testWidgets('docks channel configuration beside the meter on desktop', (

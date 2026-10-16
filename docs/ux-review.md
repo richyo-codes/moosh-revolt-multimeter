@@ -6,7 +6,7 @@ are ordered by their likely impact on the user, not by the effort to fix
 them. Each one lists the problem, why it matters, and the fix.
 
 Status: **Fixed** issues are resolved in the code; **Open** issues are
-proposals. All 25 are fixed.
+proposals. All are fixed.
 
 ## Critical: wrong or missing information
 
@@ -217,3 +217,21 @@ proposals. All 25 are fixed.
 - **Fix:** One status line ("1 Mooshimeter found") with a progress indicator
   while scanning; rows lead with signal strength and show the address as
   secondary text; colors come from the theme.
+
+## Found in use
+
+### 26. Channels were abstract numbers, not jacks — Fixed
+
+- **Problem:** A user measuring a battery on the V and C jacks chose
+  "voltage" on CH1. CH1's only voltage option was the aux input, which is a
+  different jack, so it showed a floating input drifting in millivolts, while
+  CH2 read the battery correctly at 1.596 V.
+- **Why it matters:** The meter wires each jack to a fixed channel, but the
+  app only talked about CH1 and CH2. Users think in jacks and quantities, so
+  they cannot tell where a measurement will appear.
+- **Fix:** Reading cards lead with the measurement and name the channel and
+  jack, with a small diagram of the case. The channel configuration opens
+  with **Connect your probes**, showing which jacks to use. Every mode tile
+  names its jacks, and choosing Voltage on CH1 (or Current on CH2) sets it
+  up on the channel wired to that jack and switches there.
+

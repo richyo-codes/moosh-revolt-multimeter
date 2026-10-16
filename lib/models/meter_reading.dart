@@ -83,6 +83,16 @@ enum ChannelMode {
 
   bool get usesSharedInput => input.usesShared;
 
+  /// The jack the red probe goes into, as marked on the case: A (current,
+  /// CH1), V (voltage, CH2) or Ω (the shared aux input). The black probe
+  /// always goes into C. Null for the meter's internal temperature sensor.
+  String? get jack => switch (this) {
+    current || currentAc => 'A',
+    voltage || voltageAc => 'V',
+    internalTemperature => null,
+    _ => 'Ω',
+  };
+
   /// Whether this mode has a continuity-style tone.
   bool get hasTone => this == resistance || this == diode;
 

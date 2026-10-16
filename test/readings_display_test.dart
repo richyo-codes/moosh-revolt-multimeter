@@ -63,8 +63,10 @@ void main() {
   testWidgets('hides an unused channel card completely', (tester) async {
     await tester.pumpWidget(_display(showCh1: false));
 
-    expect(find.text('CH1 · Current DC'), findsNothing);
-    expect(find.text('CH2 · Voltage DC'), findsOneWidget);
+    expect(find.text('Current DC'), findsNothing);
+    // Cards lead with the measurement and name the channel and its jack.
+    expect(find.text('Voltage DC'), findsOneWidget);
+    expect(find.text('CH2 · V jack + C'), findsOneWidget);
     expect(find.byKey(const ValueKey('channel-readings-none')), findsNothing);
   });
 

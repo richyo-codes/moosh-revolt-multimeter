@@ -4,19 +4,41 @@ This guide explains what each channel can measure and how MooshRevolt sets up
 the meter. To configure a channel, tap its range chip or the tune icon on its
 reading card.
 
+## Jacks and channels
+
+The Mooshimeter has four jacks, laid out as a diamond on the case:
+
+```
+        V          V  voltage input, up to 600 V   → always CH2
+    A       Ω      A  current input, up to 10 A    → always CH1
+        C          Ω  aux input: low voltage, resistance, diode → CH1 or CH2
+                   C  common: the black probe, for every measurement
+```
+
+The red probe goes into the jack of what you measure; the black probe always
+goes into C. To measure a battery, put the red probe in **V** and read
+**CH2**. The aux input (Ω) also measures voltage, but only up to 1.2 V and
+not through the V jack, so a battery on V does not show there.
+
+Each reading card names its measurement first, then its channel and jack
+("Voltage DC · CH2 · V jack + C"), with a small jack diagram. The channel
+configuration opens with **Connect your probes**, which lights the jacks to
+use. If you pick Voltage on CH1 or Current on CH2, the app sets it up on the
+channel wired to that jack and switches there.
+
 ## Inputs and modes
 
 The Mooshimeter has two channels. Each channel has a dedicated input and can
-also use one shared auxiliary input.
+also use the shared aux input.
 
 | Mode | CH1 | CH2 | Unit | Ranges |
 | --- | --- | --- | --- | --- |
-| Current DC / AC | ✓ (A jack) | | A | 10 A |
-| Voltage DC / AC | | ✓ (V jack) | V | 60 V, 600 V |
-| Internal Temperature | ✓ | ✓ | °C | — |
-| Auxiliary Voltage DC / AC | ✓ | ✓ | V | 100 mV, 300 mV, 1.2 V |
-| Resistance | ✓ | ✓ | Ω | 1 kΩ, 10 kΩ, 100 kΩ, 1 MΩ, 10 MΩ |
-| Diode Drop | ✓ | ✓ | V | 1.2 V |
+| Current DC / AC | ✓ (A–C) | | A | 10 A |
+| Voltage DC / AC | | ✓ (V–C) | V | 60 V, 600 V |
+| Internal Temperature | ✓ | ✓ | °C | — (no probes) |
+| Auxiliary Voltage DC / AC | ✓ (Ω–C) | ✓ (Ω–C) | V | 100 mV, 300 mV, 1.2 V |
+| Resistance | ✓ (Ω–C) | ✓ (Ω–C) | Ω | 1 kΩ, 10 kΩ, 100 kΩ, 1 MΩ, 10 MΩ |
+| Diode Drop | ✓ (Ω–C) | ✓ (Ω–C) | V | 1.2 V |
 
 Auxiliary voltage, resistance and diode drop use the shared input, so only one
 channel can use them at a time. The configuration sheet disables these modes

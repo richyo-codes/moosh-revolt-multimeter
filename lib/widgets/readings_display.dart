@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
+import 'package:moosh_revolt/widgets/meter_jacks.dart';
 
 /// Displays the two-channel readings prominently.
 class ReadingsDisplay extends StatelessWidget {
@@ -127,6 +128,9 @@ class ReadingsDisplay extends StatelessWidget {
       compact: compact,
       showFloatingValues: showFloatingValues,
       rangeLabel: ch1 ? ch1RangeLabel : ch2RangeLabel,
+      title: mode.label,
+      channelName: 'CH${channel + 1}',
+      jack: mode.jack,
     );
   }
 
@@ -241,6 +245,16 @@ class _ChannelReading extends StatelessWidget {
   /// the channel.
   final String? rangeLabel;
 
+  /// The measurement shown as the card's title, for example "Voltage DC".
+  final String title;
+
+  /// "CH1" or "CH2".
+  final String channelName;
+
+  /// The jack the red probe goes into (A, V or Ω), or null for the internal
+  /// temperature sensor.
+  final String? jack;
+
   const _ChannelReading({
     required this.label,
     required this.value,
@@ -263,6 +277,9 @@ class _ChannelReading extends StatelessWidget {
     this.showFloatingValues = false,
     this.hasFreshSample = true,
     this.rangeLabel,
+    required this.title,
+    required this.channelName,
+    this.jack,
   });
 
   @override
@@ -277,21 +294,50 @@ class _ChannelReading extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: compact ? 6 : 8,
-                height: compact ? 6 : 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              // Where the probes go, drawn like the case, so the channel is
+              // tied to its jack rather than to an abstract number.
+              Tooltip(
+                message: jack == null
+                    ? '$channelName measures the meter\'s internal sensor'
+                    : '$channelName: red probe in $jack, black probe in C',
+                child: jack == null
+                    ? Icon(
+                        Icons.thermostat,
+                        size: compact ? 18 : 26,
+                        color: color,
+                      )
+                    : MeterJacks(
+                        size: compact ? 18 : 26,
+                        active: (jack: jack!, color: color),
+                        showLabels: false,
+                      ),
               ),
-              SizedBox(width: compact ? 5 : 8),
+              SizedBox(width: compact ? 6 : 10),
               Expanded(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: compact ? 11 : 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: compact ? 12 : 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      jack == null
+                          ? '$channelName · internal sensor'
+                          : '$channelName · $jack jack + C',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: compact ? 10 : 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (onConfigure != null)

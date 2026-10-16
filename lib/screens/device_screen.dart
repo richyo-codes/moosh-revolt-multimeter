@@ -22,6 +22,7 @@ import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/continuity_tone.dart';
 import 'package:moosh_revolt/services/csv_recorder.dart';
 import 'package:moosh_revolt/screens/settings_screen.dart';
+import 'package:moosh_revolt/widgets/meter_jacks.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
 
 /// The device screen showing live readings and controls.
@@ -762,48 +763,161 @@ class _DeviceScreenState extends State<DeviceScreen>
   /// What a channel can measure, grouped like a meter's dial: one tile per
   /// quantity, with DC/AC as a separate choice where it applies.
   List<_Quantity> _quantitiesFor(int channel) => [
-    if (channel == 0)
-      const _Quantity(
-        symbol: 'A',
-        label: 'Current',
-        hint: 'A jack, up to 10 A',
-        dc: ChannelMode.current,
-        ac: ChannelMode.currentAc,
-      )
-    else
-      const _Quantity(
-        symbol: 'V',
-        label: 'Voltage',
-        hint: 'V jack, up to 600 V',
-        dc: ChannelMode.voltage,
-        ac: ChannelMode.voltageAc,
-      ),
+    // The Mooshimeter wires the A jack to CH1 and the V jack to CH2. Both
+    // are listed on both channels, so asking for "voltage" on CH1 leads to
+    // CH2 instead of to the shared low-voltage input.
+    ..._jackQuantities(channel),
     const _Quantity(
       symbol: 'mV',
       label: 'Aux voltage',
-      hint: 'Shared input, up to 1.2 V',
+      hint:
+          'Ω and C jacks, up to 1.2 V. This is not the V jack: use '
+          'Voltage for that.',
       dc: ChannelMode.auxiliaryVoltageDc,
       ac: ChannelMode.auxiliaryVoltageAc,
     ),
     const _Quantity(
       symbol: 'Ω',
       label: 'Resistance',
-      hint: 'Shared input, 1 kΩ to 10 MΩ',
+      hint: 'Ω and C jacks, 1 kΩ to 10 MΩ',
       dc: ChannelMode.resistance,
     ),
     const _Quantity(
       symbol: '▷|',
       label: 'Diode',
-      hint: 'Shared input, forward voltage up to 1.2 V',
+      hint: 'Ω and C jacks, forward voltage up to 1.2 V',
       dc: ChannelMode.diode,
     ),
     _Quantity(
       symbol: DisplayPreferences.temperature.symbol,
       label: 'Temperature',
-      hint: 'Temperature inside the meter',
+      hint: 'The meter\'s internal sensor; no probes needed',
       dc: ChannelMode.internalTemperature,
     ),
   ];
+
+  static const _currentQuantity = _Quantity(
+    symbol: 'A',
+    label: 'Current',
+    hint: 'A and C jacks, up to 10 A',
+    dc: ChannelMode.current,
+    ac: ChannelMode.currentAc,
+  );
+  static const _voltageQuantity = _Quantity(
+    symbol: 'V',
+    label: 'Voltage',
+    hint: 'V and C jacks, up to 600 V',
+    dc: ChannelMode.voltage,
+    ac: ChannelMode.voltageAc,
+  );
+
+  /// The jack diagram for [channel]: its own jack in its colour, the other
+  /// channel's jack faintly, and where each probe goes.
+  Widget _probeGuide(int channel) {
+    final theme = Theme.of(context);
+    final mode = _mode(channel);
+    final other = 1 - channel;
+    final otherMode = _mode(other);
+    final color = channel == 0 ? Colors.red : Colors.blue;
+    final otherColor = other == 0 ? Colors.red : Colors.blue;
+    final jack = mode.jack;
+    final otherJack = otherMode.jack;
+    final steps = jack == null
+        ? [
+            const Text('No probes needed.'),
+            Text(
+              'CH${channel + 1} reads the temperature inside the meter.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ]
+        : [
+            Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Red probe → '),
+                  TextSpan(
+                    text: jack,
+                    style: TextStyle(fontWeight: FontWeight.w700, color: color),
+                  ),
+                ],
+              ),
+            ),
+            const Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: 'Black probe → '),
+                  TextSpan(
+                    text: 'C',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              otherJack == null || otherJack == jack
+                  ? 'Both channels share C.'
+                  : 'CH${other + 1} uses the $otherJack jack; both share C.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ];
+    return Row(
+      children: [
+        MeterJacks(
+          key: ValueKey('probe-guide-$channel'),
+          size: 92,
+          active: jack == null ? null : (jack: jack, color: color),
+          dimmed: otherJack == null || otherJack == jack
+              ? null
+              : (jack: otherJack, color: otherColor),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: steps,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// This channel's own jack first, then the other jack, which the
+  /// hardware measures on the other channel.
+  List<_Quantity> _jackQuantities(int channel) => channel == 0
+      ? [_currentQuantity, _voltageQuantity.measuredOn(1)]
+      : [_voltageQuantity, _currentQuantity.measuredOn(0)];
+
+  /// Sets up [quantity] on the channel the hardware measures it on, shows
+  /// that channel and moves the configuration there.
+  Future<void> _useOtherChannel(
+    _Quantity quantity,
+    BleProvider provider,
+  ) async {
+    final target = quantity.onChannel!;
+    final current = _mode(target);
+    if (current != quantity.dc && current != quantity.ac) {
+      await _setChannelMode(target, quantity.dc, provider);
+    }
+    if (!mounted) return;
+    final docked = _configChannel != null;
+    setState(() {
+      if (target == 0) {
+        _showCh1 = true;
+      } else {
+        _showCh2 = true;
+      }
+      if (docked) _configChannel = target;
+    });
+    if (!docked) {
+      Navigator.of(context).pop();
+      _openChannelConfig(target);
+    }
+    final jack = quantity.dc == ChannelMode.voltage ? 'V' : 'A';
+    _showMessage(
+      '${quantity.label} on the $jack jack is measured on CH${target + 1}',
+    );
+  }
 
   Widget _channelConfig(int channel, {VoidCallback? onClose}) {
     final provider = _bleProvider;
@@ -813,7 +927,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final otherName = 'CH${2 - channel}';
     final quantities = _quantitiesFor(channel);
     final selected = quantities.firstWhere(
-      (q) => q.dc == mode || q.ac == mode,
+      (q) => q.onChannel == null && (q.dc == mode || q.ac == mode),
       orElse: () => quantities.first,
     );
     final sharedBlocked = quantities.any(
@@ -902,6 +1016,7 @@ class _DeviceScreenState extends State<DeviceScreen>
             ],
           ),
         ),
+        section('Connect your probes', [_probeGuide(channel)]),
         section('Measure', [
           LayoutBuilder(
             builder: (context, constraints) {
@@ -923,14 +1038,16 @@ class _DeviceScreenState extends State<DeviceScreen>
                             ? null
                             : 'The shared input is in use by $otherName',
                         onTap: () => unawaited(
-                          _setChannelMode(
-                            channel,
-                            // Keep AC when moving between AC-capable inputs.
-                            mode.input.isRms && quantity.ac != null
-                                ? quantity.ac!
-                                : quantity.dc,
-                            provider,
-                          ),
+                          quantity.onChannel != null
+                              ? _useOtherChannel(quantity, provider)
+                              : _setChannelMode(
+                                  channel,
+                                  // Keep AC when moving between AC inputs.
+                                  mode.input.isRms && quantity.ac != null
+                                      ? quantity.ac!
+                                      : quantity.dc,
+                                  provider,
+                                ),
                         ),
                       ),
                     ),
@@ -2100,6 +2217,7 @@ class _Quantity {
     required this.hint,
     required this.dc,
     this.ac,
+    this.onChannel,
   });
 
   final String symbol;
@@ -2107,6 +2225,24 @@ class _Quantity {
   final String hint;
   final ChannelMode dc;
   final ChannelMode? ac;
+
+  /// Set when the hardware measures this quantity on the other channel.
+  final int? onChannel;
+
+  /// Where the probes go, for example "Ω–C", or "no probes".
+  String get jacks {
+    final jack = dc.jack;
+    return jack == null ? 'no probes' : '$jack–C';
+  }
+
+  _Quantity measuredOn(int channel) => _Quantity(
+    symbol: symbol,
+    label: label,
+    hint: '$hint. Measured on CH${channel + 1}.',
+    dc: dc,
+    ac: ac,
+    onChannel: channel,
+  );
 }
 
 /// A dial-style tile: the quantity's symbol large, its name below.
@@ -2163,10 +2299,19 @@ class _QuantityTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    quantity.label,
+                    quantity.onChannel == null
+                        ? quantity.label
+                        : '${quantity.label} → CH${quantity.onChannel! + 1}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  Text(
+                    quantity.jacks,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
