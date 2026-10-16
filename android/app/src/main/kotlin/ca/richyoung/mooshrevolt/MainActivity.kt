@@ -32,6 +32,13 @@ class MainActivity : FlutterActivity() {
                         continuityTone.stop()
                         result.success(null)
                     }
+                    // The track is created on demand, so there is nothing to
+                    // warm up; release maps to stop.
+                    "prepare" -> result.success(null)
+                    "release" -> {
+                        continuityTone.release()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

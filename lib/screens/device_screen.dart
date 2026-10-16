@@ -159,7 +159,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     WidgetsBinding.instance.removeObserver(this);
     _sampleDebounce?.cancel();
     _continuityToneWanted = false;
-    _stopContinuityTone();
+    _continuityTone.release();
     if (_providerListenerAttached) {
       _bleProvider.removeListener(_onBleProviderChanged);
     }
@@ -170,7 +170,11 @@ class _DeviceScreenState extends State<DeviceScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) {
+    // Desktop windows become "inactive" whenever they lose focus, while the
+    // user is often looking at the circuit; only silence a backgrounded app.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
       _continuityToneWanted = false;
       _stopContinuityTone();
     }
@@ -636,16 +640,7 @@ class _DeviceScreenState extends State<DeviceScreen>
                         ),
                         value: _continuityToneEnabled,
                         onChanged: (enabled) {
-                          setState(() {
-                            _continuityToneEnabled = enabled;
-                            _continuityReadyAt = enabled
-                                ? DateTime.now().add(const Duration(seconds: 1))
-                                : null;
-                          });
-                          if (!enabled) {
-                            _continuityToneWanted = false;
-                            _stopContinuityTone();
-                          }
+                          setState(() => _setContinuityToneEnabled(enabled));
                           setSheetState(() {});
                         },
                       ),
@@ -755,14 +750,9 @@ class _DeviceScreenState extends State<DeviceScreen>
     BleProvider provider,
   ) async {
     if (channel == 0 && _ch1Mode == ChannelMode.resistance) {
-      _continuityToneWanted = false;
-      _stopContinuityTone();
+      setState(() => _setContinuityToneEnabled(false));
       await provider.setContinuityEnabled(false);
       if (!mounted) return;
-      setState(() {
-        _continuityToneEnabled = false;
-        _continuityReadyAt = null;
-      });
     }
     if (channel == 0 && mode == ChannelMode.resistance) {
       _sampleDebounce?.cancel();
@@ -838,6 +828,9 @@ class _DeviceScreenState extends State<DeviceScreen>
 
   void _onBleProviderChanged() {
     if (!mounted) return;
+    // Decide on the tone for every sample, ahead of the throttled graph
+    // capture, so the beep starts with the reading rather than after it.
+    _updateContinuityTone();
     if (_bleProvider.state != MmConnectionState.connected) {
       _sampleDebounce?.cancel();
       // Keep historical samples visible while the live reading is stale or
@@ -892,32 +885,38 @@ class _DeviceScreenState extends State<DeviceScreen>
         _ch2Points.removeAt(0);
       }
     });
+  }
+
+  void _updateContinuityTone() {
+    final reading = _bleProvider.hasFreshReadings
+        ? _bleProvider.latestReadings
+        : null;
     final continuityReady =
         _continuityReadyAt != null &&
         !DateTime.now().isBefore(_continuityReadyAt!);
     final shouldSound =
+        reading != null &&
+        _bleProvider.state == MmConnectionState.connected &&
         _continuityToneEnabled &&
         _ch1Mode == ChannelMode.resistance &&
         continuityReady &&
         hasContinuity(reading.ch1Value);
+    if (shouldSound == _continuityToneWanted) return;
+    _continuityToneWanted = shouldSound;
     if (shouldSound) {
-      _continuityToneWanted = true;
       unawaited(_startContinuityTone());
     } else {
-      _continuityToneWanted = false;
       _stopContinuityTone();
     }
   }
 
+  Future<String> _continuityToneFile() async =>
+      _continuityTonePath ??= await _writeContinuityTone();
+
   Future<void> _startContinuityTone() async {
     if (!_continuityToneWanted) return;
     try {
-      await _continuityTone.start(
-        toneFile: () async {
-          _continuityTonePath ??= await _writeContinuityTone();
-          return _continuityTonePath!;
-        },
-      );
+      await _continuityTone.start(toneFile: _continuityToneFile);
     } catch (error) {
       _devLog('continuity tone failed: $error');
     }
@@ -925,6 +924,20 @@ class _DeviceScreenState extends State<DeviceScreen>
 
   void _stopContinuityTone() {
     _continuityTone.stop();
+  }
+
+  /// Arms or releases the audio output together with the tone setting.
+  void _setContinuityToneEnabled(bool enabled) {
+    _continuityToneEnabled = enabled;
+    _continuityReadyAt = enabled
+        ? DateTime.now().add(const Duration(milliseconds: 300))
+        : null;
+    _continuityToneWanted = false;
+    if (enabled) {
+      unawaited(_continuityTone.prepare(toneFile: _continuityToneFile));
+    } else {
+      _continuityTone.release();
+    }
   }
 
   Future<String> _writeContinuityTone() async {
