@@ -96,14 +96,21 @@ class DeviceTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
+          // Signal first: it is what tells meters apart in practice. The
+          // address is secondary detail.
+          Text('$rssiLabel signal · $rssi dBm'),
           Text(
-            '$address • $rssiLabel ($rssi dBm)',
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            address,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           if (isRemembered)
             Text(
-              'Remembered — tap to auto-connect',
-              style: TextStyle(fontSize: 11, color: Colors.green.shade700),
+              'Remembered · tap to connect',
+              style: TextStyle(fontSize: 11, color: Colors.green.shade600),
             ),
         ],
       ),

@@ -6,7 +6,7 @@ are ordered by their likely impact on the user, not by the effort to fix
 them. Each one lists the problem, why it matters, and the fix.
 
 Status: **Fixed** issues are resolved in the code; **Open** issues are
-proposals.
+proposals. All 25 are fixed.
 
 ## Critical: wrong or missing information
 
@@ -196,20 +196,24 @@ proposals.
 
 - **Fix:** The footer shows "125 Hz · N samples".
 
-### 23. Small hit targets in compact cards — Open
+### 23. Small hit targets in compact cards — Fixed
 
-- **Problem:** The compact header icons are 28 px wide, below the 44–48 px
+- **Problem:** The compact header icons were 28 px wide, below the 44–48 px
   touch guideline.
-- **Fix:** Merge the unit and min/max controls into one 48 px menu button in
-  compact cards.
+- **Fix:** Compact cards keep units and min/max in one 40 px menu, and the
+  configure button is 40 px too.
 
-### 24. Min/max has no reset or average — Open
+### 24. Min/max had no reset or average — Fixed
 
-- **Problem:** Tracking can only be turned off and on again to reset it.
-- **Fix:** Add a reset action, and show the average alongside min/max.
+- **Problem:** Tracking could only be reset by turning it off and on again.
+- **Fix:** The line shows min, average and max, with a reset button (in the
+  menu on compact cards).
 
-### 25. Scan screen repeats its device count — Open
+### 25. Scan screen repeated its device count — Fixed
 
-- **Problem:** The "Found 1 device(s)" banner and the "1 found" chip say the
-  same thing, and the raw device UUID dominates each row.
-- **Fix:** Drop the chip, and show the UUID in a smaller, secondary style.
+- **Problem:** The "Found 1 device(s)" banner and the "1 found" chip said the
+  same thing, the raw device UUID dominated each row, and the status bars
+  used light-only colors that broke dark mode.
+- **Fix:** One status line ("1 Mooshimeter found") with a progress indicator
+  while scanning; rows lead with signal strength and show the address as
+  secondary text; colors come from the theme.

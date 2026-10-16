@@ -19,6 +19,10 @@ class ReadingsDisplay extends StatelessWidget {
   final double? ch1Maximum;
   final double? ch2Minimum;
   final double? ch2Maximum;
+  final double? ch1Average;
+  final double? ch2Average;
+  final VoidCallback? onCh1MinMaxReset;
+  final VoidCallback? onCh2MinMaxReset;
   final ValueChanged<bool>? onCh1MinMaxChanged;
   final ValueChanged<bool>? onCh2MinMaxChanged;
   final VoidCallback? onCh1Configure;
@@ -66,6 +70,10 @@ class ReadingsDisplay extends StatelessWidget {
     this.ch1Maximum,
     this.ch2Minimum,
     this.ch2Maximum,
+    this.ch1Average,
+    this.ch2Average,
+    this.onCh1MinMaxReset,
+    this.onCh2MinMaxReset,
     this.onCh1MinMaxChanged,
     this.onCh2MinMaxChanged,
     this.onCh1Configure,
@@ -107,6 +115,8 @@ class ReadingsDisplay extends StatelessWidget {
       onConfigure: ch1 ? onCh1Configure : onCh2Configure,
       minimum: ch1 ? ch1Minimum : ch2Minimum,
       maximum: ch1 ? ch1Maximum : ch2Maximum,
+      average: ch1 ? ch1Average : ch2Average,
+      onMinMaxReset: ch1 ? onCh1MinMaxReset : onCh2MinMaxReset,
       possiblyFloating: ch1 ? ch1PossiblyFloating : ch2PossiblyFloating,
       hasFreshSample: hasFreshSample,
       color: ch1 ? Colors.red : Colors.blue,
@@ -224,6 +234,10 @@ class _ChannelReading extends StatelessWidget {
   final VoidCallback? onConfigure;
   final double? minimum;
   final double? maximum;
+
+  /// Mean of the tracked samples.
+  final double? average;
+  final VoidCallback? onMinMaxReset;
   final bool possiblyFloating;
   final bool compact;
   final bool showFloatingValues;
@@ -248,6 +262,8 @@ class _ChannelReading extends StatelessWidget {
     this.onConfigure,
     this.minimum,
     this.maximum,
+    this.average,
+    this.onMinMaxReset,
     this.possiblyFloating = false,
     this.compact = false,
     this.showFloatingValues = false,
@@ -286,50 +302,17 @@ class _ChannelReading extends StatelessWidget {
               ),
               if (onConfigure != null)
                 IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28),
-                  icon: Icon(Icons.tune, size: compact ? 14 : 18),
+                  // At least 40 px, so the control is easy to hit on touch
+                  // screens even in compact cards.
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  icon: Icon(Icons.tune, size: compact ? 18 : 20),
                   tooltip: 'Configure $label',
                   onPressed: onConfigure,
                 ),
-              if (compact)
-                PopupMenuButton<DisplayUnit>(
-                  tooltip: 'Display units: Auto follows the active range',
-                  initialValue: displayUnit,
-                  onSelected: onDisplayUnitChanged,
-                  itemBuilder: (_) => DisplayUnit.choicesFor(units)
-                      .map(
-                        (unit) => PopupMenuItem(
-                          value: unit,
-                          child: Text(unit.label(units)),
-                        ),
-                      )
-                      .toList(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Text(
-                      displayUnit == DisplayUnit.auto
-                          ? 'Units: Auto'
-                          : displayUnit.label(units),
-                      style: const TextStyle(fontSize: 10),
-                    ),
-                  ),
-                ),
-              if (compact && onMinMaxChanged != null)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28),
-                  icon: Icon(
-                    minMaxTracking ? Icons.swap_vert : Icons.swap_vert_outlined,
-                    size: 16,
-                  ),
-                  tooltip: minMaxTracking
-                      ? 'Stop min/max tracking'
-                      : 'Track minimum and maximum values',
-                  onPressed: () => onMinMaxChanged!(!minMaxTracking),
-                ),
+              if (compact) _compactMenu(),
             ],
           ),
           SizedBox(height: compact ? 4 : 8),
@@ -429,12 +412,33 @@ class _ChannelReading extends StatelessWidget {
           if (minMaxTracking && minimum != null && maximum != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Min ${_formatTrackedValue(minimum!)}   Max ${_formatTrackedValue(maximum!)}',
-                style: TextStyle(
-                  fontSize: compact ? 9 : 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Min ${_formatTrackedValue(minimum!)} · '
+                      'Avg ${_formatTrackedValue(average ?? minimum!)} · '
+                      'Max ${_formatTrackedValue(maximum!)}',
+                      key: ValueKey('min-max-$label'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: compact ? 10 : 12,
+                        fontFamily: 'monospace',
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (onMinMaxReset != null && !compact)
+                    IconButton(
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      icon: const Icon(Icons.restart_alt, size: 18),
+                      tooltip: 'Reset min, average and max',
+                      onPressed: onMinMaxReset,
+                    ),
+                ],
               ),
             ),
         ],
@@ -488,6 +492,49 @@ class _ChannelReading extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// One 40 px menu for the compact card's secondary controls: units and
+  /// min/max tracking.
+  Widget _compactMenu() {
+    return PopupMenuButton<String>(
+      tooltip: 'More options for $label',
+      icon: const Icon(Icons.more_vert, size: 20),
+      constraints: const BoxConstraints(minWidth: 200),
+      onSelected: (value) {
+        if (value.startsWith('unit:')) {
+          final name = value.substring(5);
+          onDisplayUnitChanged?.call(
+            DisplayUnit.values.firstWhere((u) => u.name == name),
+          );
+        } else if (value == 'track') {
+          onMinMaxChanged?.call(!minMaxTracking);
+        } else if (value == 'reset') {
+          onMinMaxReset?.call();
+        }
+      },
+      itemBuilder: (_) => [
+        for (final unit in DisplayUnit.choicesFor(units))
+          CheckedPopupMenuItem(
+            value: 'unit:${unit.name}',
+            checked: unit == displayUnit,
+            child: Text('Units: ${unit.label(units)}'),
+          ),
+        if (onMinMaxChanged != null) ...[
+          const PopupMenuDivider(),
+          CheckedPopupMenuItem(
+            value: 'track',
+            checked: minMaxTracking,
+            child: const Text('Track min/avg/max'),
+          ),
+          PopupMenuItem(
+            value: 'reset',
+            enabled: minMaxTracking && onMinMaxReset != null,
+            child: const Text('Reset min/avg/max'),
           ),
         ],
       ],

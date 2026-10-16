@@ -108,7 +108,7 @@ void main() {
     expect(find.text('Record'), findsNothing);
     expect(find.byTooltip('Save screenshot'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
 
     expect(find.text('Graph style: Dual axis'), findsOneWidget);
@@ -206,14 +206,37 @@ void main() {
       provider: FakeBleProvider(ch1: 0.003, ch2: 1.2),
     );
 
-    final trackers = find.byTooltip('Track minimum and maximum values');
-    expect(trackers, findsNWidgets(2));
+    // Compact cards keep units and min/max in one 40 px menu.
+    final menus = find.byTooltip('More options for CH1 · Current DC');
+    expect(menus, findsOneWidget);
+    expect(tester.getSize(menus).width, greaterThanOrEqualTo(40));
 
-    await tester.tap(trackers.first);
-    await tester.pump();
+    await tester.tap(menus);
+    await tester.pumpAndSettle();
+    // The menu scrolls on a short landscape screen.
+    await tester.ensureVisible(find.text('Track min/avg/max'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Track min/avg/max'));
+    await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Stop min/max tracking'), findsOneWidget);
-    expect(find.byTooltip('Track minimum and maximum values'), findsOneWidget);
+    bool tracking() => tester
+        .widget<CheckedPopupMenuItem<String>>(
+          find.widgetWithText(
+            CheckedPopupMenuItem<String>,
+            'Track min/avg/max',
+          ),
+        )
+        .checked;
+
+    // Only CH1 tracks.
+    await tester.tap(menus);
+    await tester.pumpAndSettle();
+    expect(tracking(), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options for CH2 · Voltage DC'));
+    await tester.pumpAndSettle();
+    expect(tracking(), isFalse);
   });
 
   testWidgets('hides unavailable RSSI from the status rail', (tester) async {
@@ -258,7 +281,7 @@ void main() {
     final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
     await pumpDevice(tester, size: const Size(390, 844), provider: provider);
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Disconnect'));
     await tester.pumpAndSettle();

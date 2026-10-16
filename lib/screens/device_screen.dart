@@ -72,6 +72,11 @@ class _DeviceScreenState extends State<DeviceScreen>
   bool _ch1MinMaxTracking = false;
   bool _ch2MinMaxTracking = false;
   double? _ch1Minimum;
+  // Running sums for the tracked averages.
+  double _ch1Sum = 0;
+  int _ch1Count = 0;
+  double _ch2Sum = 0;
+  int _ch2Count = 0;
   double? _ch1Maximum;
   double? _ch2Minimum;
   double? _ch2Maximum;
@@ -442,6 +447,10 @@ class _DeviceScreenState extends State<DeviceScreen>
           ch1MinMaxTracking: _ch1MinMaxTracking,
           ch2MinMaxTracking: _ch2MinMaxTracking,
           ch1Minimum: _ch1Minimum,
+          ch1Average: _ch1Count == 0 ? null : _ch1Sum / _ch1Count,
+          ch2Average: _ch2Count == 0 ? null : _ch2Sum / _ch2Count,
+          onCh1MinMaxReset: () => setState(_resetCh1MinMax),
+          onCh2MinMaxReset: () => setState(_resetCh2MinMax),
           ch1Maximum: _ch1Maximum,
           ch2Minimum: _ch2Minimum,
           ch2Maximum: _ch2Maximum,
@@ -1210,10 +1219,14 @@ class _DeviceScreenState extends State<DeviceScreen>
       _ch1Points.add(LinePoint(elapsed, ch1));
       _ch2Points.add(LinePoint(elapsed, ch2));
       if (_ch1MinMaxTracking && !ch1.isNaN) {
+        _ch1Sum += ch1;
+        _ch1Count++;
         _ch1Minimum = math.min(_ch1Minimum ?? ch1, ch1);
         _ch1Maximum = math.max(_ch1Maximum ?? ch1, ch1);
       }
       if (_ch2MinMaxTracking && !ch2.isNaN) {
+        _ch2Sum += ch2;
+        _ch2Count++;
         _ch2Minimum = math.min(_ch2Minimum ?? ch2, ch2);
         _ch2Maximum = math.max(_ch2Maximum ?? ch2, ch2);
       }
@@ -1359,11 +1372,15 @@ class _DeviceScreenState extends State<DeviceScreen>
   void _resetCh1MinMax() {
     _ch1Minimum = null;
     _ch1Maximum = null;
+    _ch1Sum = 0;
+    _ch1Count = 0;
   }
 
   void _resetCh2MinMax() {
     _ch2Minimum = null;
     _ch2Maximum = null;
+    _ch2Sum = 0;
+    _ch2Count = 0;
   }
 
   /// Where snapshots and screenshots go: the Downloads folder on desktop,

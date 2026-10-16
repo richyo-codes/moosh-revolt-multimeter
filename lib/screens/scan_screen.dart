@@ -126,7 +126,9 @@ class _ScanScreenState extends State<ScanScreen> {
           }
           _deviceCount = _devices.length;
           if (_deviceCount > 0) {
-            _scanStatus = 'Found $_deviceCount device(s)';
+            _scanStatus = _deviceCount == 1
+                ? '1 Mooshimeter found'
+                : '$_deviceCount Mooshimeters found';
             _screenLog('    _deviceCount=$_deviceCount');
           } else {
             _scanStatus = 'Scanning...';
@@ -255,12 +257,12 @@ class _ScanScreenState extends State<ScanScreen> {
                   horizontal: 16,
                   vertical: 12,
                 ),
-                color: Colors.blue.shade50,
+                color: Theme.of(context).colorScheme.secondaryContainer,
                 child: Row(
                   children: [
                     Icon(
                       _isScanning ? Icons.hourglass_empty : Icons.info_outline,
-                      color: Colors.blue.shade700,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -268,15 +270,18 @@ class _ScanScreenState extends State<ScanScreen> {
                       child: Text(
                         _scanStatus,
                         style: TextStyle(
-                          color: Colors.blue.shade700,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSecondaryContainer,
                           fontSize: 14,
                         ),
                       ),
                     ),
-                    if (_deviceCount > 0)
-                      Chip(
-                        label: Text('$_deviceCount found'),
-                        visualDensity: VisualDensity.compact,
+                    if (_isScanning)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                   ],
                 ),
@@ -290,7 +295,7 @@ class _ScanScreenState extends State<ScanScreen> {
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  color: Colors.green.shade100,
+                  color: Colors.green.withAlpha(40),
                   child: Row(
                     children: [
                       const Icon(
@@ -311,7 +316,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         '${_connectedDevices.length} online',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: Colors.green.shade600,
                         ),
                       ),
                     ],
@@ -333,7 +338,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       return ListTile(
                         leading: CircleAvatar(
                           radius: 16,
-                          backgroundColor: Colors.green.shade200,
+                          backgroundColor: Colors.green.withAlpha(40),
                           child: const Icon(
                             Icons.check_circle,
                             size: 16,
@@ -376,7 +381,7 @@ class _ScanScreenState extends State<ScanScreen> {
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  color: Colors.green.shade50,
+                  color: Colors.green.withAlpha(40),
                   child: Row(
                     children: [
                       const Icon(Icons.star, color: Colors.green, size: 18),
@@ -393,7 +398,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         '${remembered.length} saved',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: Colors.green.shade600,
                         ),
                       ),
                     ],
@@ -419,13 +424,13 @@ class _ScanScreenState extends State<ScanScreen> {
                           radius: 16,
                           backgroundColor: hasAutoConnect
                               ? Colors.amber.shade100
-                              : Colors.green.shade100,
+                              : Colors.green.withAlpha(40),
                           child: Icon(
                             hasAutoConnect ? Icons.flash_on : Icons.bluetooth,
                             size: 16,
                             color: hasAutoConnect
                                 ? Colors.amber.shade700
-                                : Colors.green.shade700,
+                                : Colors.green.shade600,
                           ),
                         ),
                         title: Text(
@@ -478,7 +483,9 @@ class _ScanScreenState extends State<ScanScreen> {
                             Icon(
                               Icons.bluetooth_searching,
                               size: 64,
-                              color: Colors.grey.shade300,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -487,7 +494,9 @@ class _ScanScreenState extends State<ScanScreen> {
                                   : 'No nearby devices detected',
                               style: TextStyle(
                                 fontSize: 18,
-                                color: Colors.grey.shade600,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -497,7 +506,9 @@ class _ScanScreenState extends State<ScanScreen> {
                                   : 'Use Connect above to find a saved meter',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey.shade500,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
