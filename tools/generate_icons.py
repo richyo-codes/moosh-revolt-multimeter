@@ -89,9 +89,6 @@ def main() -> None:
     grid.save(ico, sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
     print(f"  {ico.relative_to(ROOT)}")
 
-    print("In-app logo")
-    save(body, ROOT / "assets/images/mooshrevolt_mark.png", 512)
-
 
 if __name__ == "__main__":
     main()

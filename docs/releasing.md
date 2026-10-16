@@ -32,7 +32,9 @@ Every platform icon is rendered from
 [`assets/branding/mooshrevolt_icon.svg`](../assets/branding/mooshrevolt_icon.svg),
 which shows the Mooshimeter's translucent body, board and copper jacks. After
 changing it, regenerate the macOS, Linux/Flatpak, Android, web and Windows
-icons and the in-app logo:
+icons. The logo inside the app is drawn in code
+(`lib/widgets/mooshrevolt_mark.dart`) without the tile, in the theme's
+colors, so keep the two in step:
 
 ```sh
 DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib \
