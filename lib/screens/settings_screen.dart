@@ -37,6 +37,14 @@ class SettingsScreen extends StatelessWidget {
                 value: settings.autoConnect,
                 onChanged: (v) => settings.autoConnect = v,
               ),
+              SwitchListTile(
+                title: const Text('Reconnect automatically'),
+                subtitle: const Text(
+                  'Re-establish the link when the meter drops out of range',
+                ),
+                value: settings.autoReconnect,
+                onChanged: (v) => settings.autoReconnect = v,
+              ),
 
               const Divider(height: 32),
 

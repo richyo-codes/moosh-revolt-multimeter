@@ -93,6 +93,14 @@ reveals the file in Finder. The continuity tone is generated natively with
 Core Audio, so it starts together with the reading. The standalone CSV logger
 described below uses BlueZ and is Linux-only.
 
+## Connection
+
+When the Bluetooth link drops without **Disconnect**, for example when the
+meter leaves the range, MooshRevolt reconnects on its own. It retries after
+1, 2, 5, 10, 20 and then every 30 seconds, restores the measurement setup,
+and keeps the chart history. Select **Stop reconnecting** to give up, or turn
+off **Settings → Reconnect automatically**.
+
 ## Mock development mode
 
 Launch directly into a simulated connected meter without Bluetooth hardware:

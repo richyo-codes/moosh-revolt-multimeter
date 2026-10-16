@@ -36,6 +36,11 @@ void main() async {
     );
   }
 
+  bleProvider.autoReconnect = settingsProvider.autoReconnect;
+  settingsProvider.addListener(
+    () => bleProvider.autoReconnect = settingsProvider.autoReconnect,
+  );
+
   // Keep the metrics endpoint in step with its settings.
   void configureExporter() => unawaited(
     prometheusExporter.configure(

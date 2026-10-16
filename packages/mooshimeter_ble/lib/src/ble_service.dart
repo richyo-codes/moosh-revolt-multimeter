@@ -157,6 +157,16 @@ class BleProvider extends ChangeNotifier {
   int _sampleRateIndex = 0;
   int _bufferDepth = 64;
   bool _rangeChangeInProgress = false;
+
+  // Automatic reconnection after an unexpected link loss.
+  BleDevice? _lastDevice;
+  bool _autoReconnect = true;
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+  bool _reconnecting = false;
+
+  /// Delays between reconnection attempts; the last one repeats.
+  static const reconnectBackoff = [1, 2, 5, 10, 20, 30];
   final MooshimeterSerialReassembler _serialReassembler =
       MooshimeterSerialReassembler();
   final MooshimeterFrameDecoder _frameDecoder = MooshimeterFrameDecoder();
@@ -213,6 +223,30 @@ class BleProvider extends ChangeNotifier {
   Stream<DeviceReadings> get readings => _readingsController.stream;
   double get battery => _battery;
   bool get isConnected => _state == MmConnectionState.connected;
+
+  /// Whether a dropped link is being re-established automatically.
+  bool get isReconnecting => _reconnecting;
+
+  /// Attempts made since the link dropped.
+  int get reconnectAttempt => _reconnectAttempt;
+
+  /// Reconnect automatically when the link drops without [disconnect].
+  bool get autoReconnect => _autoReconnect;
+  set autoReconnect(bool value) {
+    _autoReconnect = value;
+    if (!value) cancelReconnect();
+  }
+
+  /// Stops reconnecting; the meter stays disconnected until [connect].
+  void cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (_reconnecting) {
+      _reconnecting = false;
+      _reconnectAttempt = 0;
+      notifyListeners();
+    }
+  }
 
   /// What [channel] (0 = CH1) currently measures.
   MeterInput input(int channel) => _inputs[channel];
@@ -345,9 +379,14 @@ class BleProvider extends ChangeNotifier {
     }
 
     _deviceId = deviceId;
+    _lastDevice = device;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _setState(MmConnectionState.connecting);
 
-    // Listen for connection state changes
+    // Listen for connection state changes. Replace any listener from an
+    // earlier attempt, or each link loss would be handled several times.
+    await _connectionSub?.cancel();
     _connectionSub = UniversalBle.connectionStream(deviceId).listen((
       isConnected,
     ) {
@@ -363,7 +402,12 @@ class BleProvider extends ChangeNotifier {
 
     try {
       debugPrint('[BLE]     calling UniversalBle.connect()');
-      await UniversalBle.connect(deviceId);
+      // Bounded, so a reconnection attempt to a meter that is out of range
+      // fails and retries instead of waiting forever.
+      await UniversalBle.connect(
+        deviceId,
+        timeout: const Duration(seconds: 15),
+      );
       // Some Android backends do not emit the initial `true` value on the
       // connection stream. The successful connect call is authoritative;
       // later false events still take the disconnect path above.
@@ -432,6 +476,8 @@ class BleProvider extends ChangeNotifier {
 
   /// Disconnect from the current device.
   Future<void> disconnect() async {
+    // An explicit disconnect also ends automatic reconnection.
+    cancelReconnect();
     if (_state == MmConnectionState.disconnected) return;
 
     debugPrint('[BLE] >>> disconnect START');
@@ -477,6 +523,37 @@ class BleProvider extends ChangeNotifier {
     if (_state != MmConnectionState.disconnected) {
       _setState(MmConnectionState.disconnected);
     }
+    _scheduleReconnect();
+  }
+
+  /// Retries the last meter with backoff after an unexpected link loss.
+  /// The measurement configuration is kept, so [connect] restores it.
+  void _scheduleReconnect() {
+    final device = _lastDevice;
+    if (!_autoReconnect || device == null || _reconnectTimer != null) return;
+    _reconnecting = true;
+    final delay =
+        reconnectBackoff[_reconnectAttempt.clamp(
+          0,
+          reconnectBackoff.length - 1,
+        )];
+    debugPrint(
+      '[BLE]     reconnecting in ${delay}s (attempt ${_reconnectAttempt + 1})',
+    );
+    notifyListeners();
+    _reconnectTimer = Timer(Duration(seconds: delay), () async {
+      _reconnectTimer = null;
+      if (!_reconnecting) return;
+      _reconnectAttempt++;
+      final ok = await connect(device, sampleRate: _sampleRateSetting);
+      if (ok) {
+        _reconnecting = false;
+        _reconnectAttempt = 0;
+        notifyListeners();
+      } else if (_reconnecting) {
+        _scheduleReconnect();
+      }
+    });
   }
 
   void _resetAfterDisconnect() {

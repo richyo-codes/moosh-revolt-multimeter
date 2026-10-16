@@ -328,6 +328,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   }
 
   Widget _buildDisconnectedState(MmConnectionState state) {
+    if (_bleProvider.isReconnecting) return _buildReconnectingState();
     final connecting = state == MmConnectionState.connecting;
     return Center(
       child: Padding(
@@ -362,6 +363,46 @@ class _DeviceScreenState extends State<DeviceScreen>
                 label: const Text('Reconnect'),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The link dropped and the provider retries with backoff; the history
+  /// stays on the chart and sampling resumes on its own.
+  Widget _buildReconnectingState() {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Reconnecting to the meter…',
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'The Bluetooth link dropped. Attempt '
+              '${_bleProvider.reconnectAttempt + 1}; keep the meter on and '
+              'in range. Your settings are restored when it reconnects.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton(
+              onPressed: _bleProvider.cancelReconnect,
+              child: const Text('Stop reconnecting'),
+            ),
           ],
         ),
       ),

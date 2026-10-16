@@ -12,6 +12,7 @@ class SettingsProvider extends ChangeNotifier {
 
   // --- Settings ---
   bool _autoConnect = true;
+  bool _autoReconnect = true;
   int? _sampleRate;
   Duration _chartWindow = const Duration(minutes: 1);
   ThemeMode _themeMode = ThemeMode.system;
@@ -41,6 +42,9 @@ class SettingsProvider extends ChangeNotifier {
   // --- Getters ---
 
   bool get autoConnect => _autoConnect;
+
+  /// Re-establish a dropped Bluetooth link automatically.
+  bool get autoReconnect => _autoReconnect;
 
   /// The preferred sample rate in Hz, or null to choose it from the
   /// measurement (125 Hz for DC, 4 kHz for AC).
@@ -89,6 +93,7 @@ class SettingsProvider extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
 
     _autoConnect = _prefs?.getBool('autoconnect') ?? true;
+    _autoReconnect = _prefs?.getBool('auto_reconnect') ?? true;
     // A new key: the old one always held a fixed rate (125 Hz by default),
     // which would keep AC measurements from switching to 4 kHz.
     final storedRate = _prefs?.getInt('sample_rate') ?? 0;
@@ -161,6 +166,12 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   // --- Connection Settings ---
+
+  set autoReconnect(bool value) {
+    _autoReconnect = value;
+    _prefs?.setBool('auto_reconnect', value);
+    notifyListeners();
+  }
 
   set autoConnect(bool value) {
     _autoConnect = value;
