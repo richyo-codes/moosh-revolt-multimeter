@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/screens/about_screen.dart';
@@ -33,12 +34,6 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 value: settings.autoConnect,
                 onChanged: (v) => settings.autoConnect = v,
-              ),
-              SwitchListTile(
-                title: const Text('Skip firmware check'),
-                subtitle: const Text('Skip OAD firmware update prompt'),
-                value: settings.skipUpgrade,
-                onChanged: (v) => settings.skipUpgrade = v,
               ),
 
               const Divider(height: 32),
@@ -225,18 +220,18 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               ListTile(
                 title: const Text('Default sample rate'),
-                subtitle: Text(
-                  settings.sampleRate == null
-                      ? 'Auto (125 Hz DC, 4 kHz AC)'
-                      : '${settings.sampleRate} Hz',
+                subtitle: const Text(
+                  'Auto uses 125 Hz for DC and 4 kHz for AC',
                 ),
                 // 0 stands for Auto in the menu; the setting stores null.
-                trailing: PopupMenuButton<int>(
-                  onSelected: (rate) =>
+                trailing: DropdownButton<int>(
+                  value: settings.sampleRate ?? 0,
+                  underline: const SizedBox.shrink(),
+                  onChanged: (rate) =>
                       settings.sampleRate = rate == 0 ? null : rate,
-                  itemBuilder: (_) => [0, 125, 250, 500, 1000, 2000, 4000, 8000]
+                  items: [0, 125, 250, 500, 1000, 2000, 4000, 8000]
                       .map(
-                        (r) => PopupMenuItem(
+                        (r) => DropdownMenuItem(
                           value: r,
                           child: Text(r == 0 ? 'Auto' : '$r Hz'),
                         ),
@@ -246,12 +241,21 @@ class SettingsScreen extends StatelessWidget {
               ),
               ListTile(
                 title: const Text('Chart history'),
-                subtitle: Text(formatChartWindow(settings.chartWindow)),
-                trailing: PopupMenuButton<Duration>(
-                  onSelected: (window) => settings.chartWindow = window,
-                  itemBuilder: (_) => SettingsProvider.chartWindows
+                subtitle: const Text('How much time the live chart keeps'),
+                trailing: DropdownButton<Duration>(
+                  value:
+                      SettingsProvider.chartWindows.contains(
+                        settings.chartWindow,
+                      )
+                      ? settings.chartWindow
+                      : null,
+                  underline: const SizedBox.shrink(),
+                  onChanged: (window) {
+                    if (window != null) settings.chartWindow = window;
+                  },
+                  items: SettingsProvider.chartWindows
                       .map(
-                        (w) => PopupMenuItem(
+                        (w) => DropdownMenuItem(
                           value: w,
                           child: Text(formatChartWindow(w)),
                         ),
@@ -281,11 +285,18 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               ListTile(
-                title: const Text('BLE Service UUIDs'),
-                subtitle: const Text('1BC5FFA0-0200-62AB-E411-F254E005DBD4'),
+                title: const Text('BLE service UUID'),
+                subtitle: const Text(_serviceUuid),
                 trailing: const Icon(Icons.copy, size: 16),
-                onTap: () {
-                  // TODO: Clipboard copy
+                onTap: () async {
+                  await Clipboard.setData(
+                    const ClipboardData(text: _serviceUuid),
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Service UUID copied')),
+                    );
+                  }
                 },
               ),
             ],
@@ -316,3 +327,5 @@ extension on DateTime {
     return '${months[month - 1]} $day, ${year.toString().substring(2)} ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 }
+
+const _serviceUuid = '1BC5FFA0-0200-62AB-E411-F254E005DBD4';

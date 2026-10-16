@@ -165,6 +165,12 @@ class _MarketingBleProvider extends BleProvider {
   @override
   Future<void> disconnect() async {}
 
+  /// The range layout of a real Mooshimeter V.1, so screenshots show the
+  /// bench-meter formatting of the default 10 A and 60 V ranges.
+  @override
+  List<double> ranges(int channel) =>
+      channel == 0 ? const [10] : const [60, 600];
+
   void publish({
     required double current,
     required double voltage,

@@ -12,7 +12,6 @@ class SettingsProvider extends ChangeNotifier {
 
   // --- Settings ---
   bool _autoConnect = true;
-  bool _skipUpgrade = false;
   int? _sampleRate;
   Duration _chartWindow = const Duration(minutes: 1);
   ThemeMode _themeMode = ThemeMode.system;
@@ -28,7 +27,7 @@ class SettingsProvider extends ChangeNotifier {
   String? _graphStyle;
   bool _continuityTone = false;
   bool _continuityGraph = false;
-  double _readingsFraction = 0.4;
+  double _readingsFraction = defaultReadingsFraction;
 
   // --- Remembered Devices ---
   List<RememberedDevice> _rememberedDevices = [];
@@ -36,7 +35,6 @@ class SettingsProvider extends ChangeNotifier {
   // --- Getters ---
 
   bool get autoConnect => _autoConnect;
-  bool get skipUpgrade => _skipUpgrade;
 
   /// The preferred sample rate in Hz, or null to choose it from the
   /// measurement (125 Hz for DC, 4 kHz for AC).
@@ -78,7 +76,6 @@ class SettingsProvider extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
 
     _autoConnect = _prefs?.getBool('autoconnect') ?? true;
-    _skipUpgrade = _prefs?.getBool('skip_upgrade') ?? false;
     // A new key: the old one always held a fixed rate (125 Hz by default),
     // which would keep AC measurements from switching to 4 kHz.
     final storedRate = _prefs?.getInt('sample_rate') ?? 0;
@@ -120,10 +117,9 @@ class SettingsProvider extends ChangeNotifier {
     _graphStyle = _prefs?.getString('graph_style');
     _continuityTone = _prefs?.getBool('continuity_tone') ?? false;
     _continuityGraph = _prefs?.getBool('continuity_graph') ?? false;
-    _readingsFraction = (_prefs?.getDouble('readings_fraction') ?? 0.4).clamp(
-      minReadingsFraction,
-      maxReadingsFraction,
-    );
+    _readingsFraction =
+        (_prefs?.getDouble('readings_fraction') ?? defaultReadingsFraction)
+            .clamp(minReadingsFraction, maxReadingsFraction);
 
     // Load remembered devices
     final raw = _prefs?.getString('remembered_devices');
@@ -147,12 +143,6 @@ class SettingsProvider extends ChangeNotifier {
   set autoConnect(bool value) {
     _autoConnect = value;
     _prefs?.setBool('autoconnect', value);
-    notifyListeners();
-  }
-
-  set skipUpgrade(bool value) {
-    _skipUpgrade = value;
-    _prefs?.setBool('skip_upgrade', value);
     notifyListeners();
   }
 
@@ -227,6 +217,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  static const defaultReadingsFraction = 0.4;
   static const minReadingsFraction = 0.15;
   static const maxReadingsFraction = 0.7;
 

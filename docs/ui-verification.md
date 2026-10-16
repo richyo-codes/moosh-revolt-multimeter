@@ -18,7 +18,8 @@ flutter test
 | Landscape/tablet | 844 × 390 | Secondary actions remain in the overflow menu |
 | Desktop | 1280 × 800 | Readings and dual-axis graph share one landscape row |
 | Signal unavailable | 390 × 844 | RSSI is omitted while battery and sample status remain visible |
-| Appearance | Settings screen | Dark mode is available only under Settings → Appearance |
+| Appearance | Settings screen | Theme offers System, Light and Dark under Settings → Appearance |
+| Resizable layout | 1400 × 800 | Dragging the divider resizes, clamps to 15–70%, and double-click resets |
 
 The test output itself is the machine-readable pass/fail report. Use
 `flutter test --reporter expanded` when attaching an explicit test log to a
@@ -44,3 +45,6 @@ flutter test integration_test/marketing_screenshots_test.dart -d linux \
 Review all generated PNGs before publishing screenshots or making broad visual
 changes. They intentionally use simulated readings and do not need a physical
 Mooshimeter.
+
+The findings behind the current layout and navigation are recorded in
+[UX review](ux-review.md).

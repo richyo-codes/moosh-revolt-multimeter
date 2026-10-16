@@ -30,6 +30,10 @@ class RealtimeChart extends StatefulWidget {
   final ValueChanged<bool>? onCh1VisibilityChanged;
   final ValueChanged<bool>? onCh2VisibilityChanged;
 
+  /// Wall-clock time of x = 0 in seconds since the epoch. When set, the time
+  /// axis shows clock times; otherwise it shows elapsed seconds.
+  final double? timeOrigin;
+
   const RealtimeChart({
     super.key,
     required this.ch1Points,
@@ -47,6 +51,7 @@ class RealtimeChart extends StatefulWidget {
     this.showCh2 = true,
     this.onCh1VisibilityChanged,
     this.onCh2VisibilityChanged,
+    this.timeOrigin,
   });
 
   @override
@@ -293,6 +298,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
     );
     final (minX, maxX) = _xWindow;
     return LineChartData(
+      baselineX: _timeBaseline(minX, maxX),
       minX: minX,
       maxX: maxX,
       minY: range.min,
@@ -309,9 +315,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       titlesData: FlTitlesData(
         show: true,
-        bottomTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
+        bottomTitles: _timeTitles(minX, maxX, blank: rightAxis),
         leftTitles: AxisTitles(
           axisNameWidget: rightAxis ? null : _axisLabel(label, color),
           axisNameSize: rightAxis ? 0 : 20,
@@ -350,6 +354,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
     final (minX, maxX) = _xWindow;
 
     return LineChartData(
+      baselineX: _timeBaseline(minX, maxX),
       minX: minX,
       maxX: maxX,
       minY: range.min,
@@ -366,7 +371,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       titlesData: FlTitlesData(
         show: true,
-        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: _timeTitles(minX, maxX),
         leftTitles: AxisTitles(
           axisNameWidget: _axisLabel(
             '${widget.ch1Label} / ${widget.ch2Label}',
@@ -431,6 +436,61 @@ class _RealtimeChartState extends State<RealtimeChart> {
     1 => 'Cont.',
     _ => '',
   };
+
+  /// Tick spacing that gives about five labels across the window.
+  static double _timeStep(double span) {
+    const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+    final target = span / 5;
+    return steps.firstWhere((s) => s >= target, orElse: () => 3600).toDouble();
+  }
+
+  /// Shifts tick positions so labels fall on round clock times.
+  double _timeBaseline(double minX, double maxX) {
+    final origin = widget.timeOrigin;
+    if (origin == null) return 0;
+    return -(origin % _timeStep(maxX - minX));
+  }
+
+  AxisTitles _timeTitles(double minX, double maxX, {bool blank = false}) {
+    final step = _timeStep(maxX - minX);
+    return AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        reservedSize: 20,
+        interval: step,
+        getTitlesWidget: (value, meta) {
+          // fl_chart also labels the window edges; only round ticks help.
+          if (blank || value == meta.min || value == meta.max) {
+            return const SizedBox.shrink();
+          }
+          return SideTitleWidget(
+            meta: meta,
+            child: Text(
+              _timeLabel(value, step),
+              style: TextStyle(fontSize: 9, color: _plotText),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _timeLabel(double x, double step) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final origin = widget.timeOrigin;
+    if (origin == null) {
+      final seconds = x.round();
+      return seconds >= 60
+          ? '${seconds ~/ 60}:${two(seconds % 60)}'
+          : '${seconds}s';
+    }
+    final time = DateTime.fromMillisecondsSinceEpoch(
+      ((origin + x) * 1000).round(),
+    );
+    return step >= 60
+        ? '${two(time.hour)}:${two(time.minute)}'
+        : '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
+  }
 
   Widget _axisLabel(String label, Color color) => Text(
     label,

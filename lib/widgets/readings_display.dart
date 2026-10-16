@@ -34,6 +34,10 @@ class ReadingsDisplay extends StatelessWidget {
 
   /// Digits the meter resolves at its current sample rate and depth.
   final int significantDigits;
+
+  /// Each channel's active range, for example "Auto · 60 V".
+  final String? ch1RangeLabel;
+  final String? ch2RangeLabel;
   final bool compactLayout;
   final bool stackedLayout;
   final bool showFloatingValues;
@@ -73,6 +77,8 @@ class ReadingsDisplay extends StatelessWidget {
     this.ch1Max,
     this.ch2Max,
     this.significantDigits = 5,
+    this.ch1RangeLabel,
+    this.ch2RangeLabel,
     this.compactLayout = false,
     this.stackedLayout = false,
     this.showFloatingValues = false,
@@ -106,6 +112,7 @@ class ReadingsDisplay extends StatelessWidget {
       color: ch1 ? Colors.red : Colors.blue,
       compact: compact,
       showFloatingValues: showFloatingValues,
+      rangeLabel: ch1 ? ch1RangeLabel : ch2RangeLabel,
     );
   }
 
@@ -222,6 +229,10 @@ class _ChannelReading extends StatelessWidget {
   final bool showFloatingValues;
   final bool hasFreshSample;
 
+  /// The active range, for example "Auto · 60 V"; tapping it configures
+  /// the channel.
+  final String? rangeLabel;
+
   const _ChannelReading({
     required this.label,
     required this.value,
@@ -241,12 +252,11 @@ class _ChannelReading extends StatelessWidget {
     this.compact = false,
     this.showFloatingValues = false,
     this.hasFreshSample = true,
+    this.rangeLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hideFloatingValue = possiblyFloating && !showFloatingValues;
-    final hideValue = !hasFreshSample || hideFloatingValue;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 12,
@@ -323,51 +333,17 @@ class _ChannelReading extends StatelessWidget {
             ],
           ),
           SizedBox(height: compact ? 4 : 8),
-          if (isOutOfRange && hasFreshSample)
-            Tooltip(
-              message: 'Overload: the input exceeds the selected range',
-              child: Text(
-                'OL',
-                key: ValueKey('reading-overload-$label'),
-                style: TextStyle(
-                  fontSize: compact ? 20 : 36,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'monospace',
-                  color: Colors.orange.shade700,
-                ),
-              ),
-            )
-          else
-            Row(
-              key: ValueKey('reading-value-with-unit-$label'),
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Flexible(
-                  child: Text(
-                    hideValue ? '—' : _formatValue(),
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 20 : 36,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
-                      color: color,
-                    ),
-                  ),
-                ),
-                if (!hideValue) ...[
-                  SizedBox(width: compact ? 5 : 10),
-                  Text(
-                    _getPrefix() + units,
-                    style: TextStyle(
-                      fontSize: compact ? 11 : 16,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
+          // A meter's main affordance is the number: in a roomy card it
+          // grows to fill the space, in a tight one it shrinks to fit.
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: compact
+                  ? _valueRow(context, fontSize: 64, unitSize: 28)
+                  : _valueRow(context, fontSize: 96, unitSize: 36),
             ),
+          ),
           if (!compact)
             Padding(
               padding: EdgeInsets.only(top: compact ? 4 : 8),
@@ -375,6 +351,14 @@ class _ChannelReading extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
+                  if (rangeLabel != null)
+                    ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(Icons.speed, size: 14, color: color),
+                      label: Text(rangeLabel!),
+                      tooltip: 'Change measurement and range',
+                      onPressed: onConfigure,
+                    ),
                   PopupMenuButton<DisplayUnit>(
                     tooltip: 'Display units: Auto follows the active range',
                     initialValue: displayUnit,
@@ -455,6 +439,58 @@ class _ChannelReading extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _valueRow(
+    BuildContext context, {
+    required double fontSize,
+    required double unitSize,
+  }) {
+    if (isOutOfRange && hasFreshSample) {
+      return Tooltip(
+        message: 'Overload: the input exceeds the selected range',
+        child: Text(
+          'OL',
+          key: ValueKey('reading-overload-$label'),
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+            color: Colors.orange.shade700,
+          ),
+        ),
+      );
+    }
+    final hideValue =
+        !hasFreshSample || (possiblyFloating && !showFloatingValues);
+    return Row(
+      key: ValueKey('reading-value-with-unit-$label'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(
+          hideValue ? '—' : _formatValue(),
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+            color: color,
+          ),
+        ),
+        if (!hideValue) ...[
+          SizedBox(width: fontSize * 0.2),
+          Text(
+            _getPrefix() + units,
+            style: TextStyle(
+              fontSize: unitSize,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 

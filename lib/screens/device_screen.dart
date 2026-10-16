@@ -15,10 +15,11 @@ import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 import 'package:moosh_revolt/widgets/readings_display.dart';
 import 'package:moosh_revolt/widgets/realtime_chart.dart';
+import 'package:moosh_revolt/widgets/resizable_split.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/continuity_tone.dart';
-import 'package:moosh_revolt/screens/graph_screen.dart';
+import 'package:moosh_revolt/screens/settings_screen.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
 
 /// The device screen showing live readings and controls.
@@ -238,58 +239,57 @@ class _DeviceScreenState extends State<DeviceScreen>
               actions: [
                 _connectionStatusWidget(provider.state, compact: compactAppBar),
                 IconButton(
-                  icon: const Icon(Icons.tune),
+                  // Distinct from the per-channel "tune" controls: this
+                  // configures the meter itself (rate, SD card, device).
+                  icon: const Icon(Icons.memory),
                   onPressed: _showDeviceSettings,
                   tooltip: 'Meter settings',
                 ),
                 PopupMenuButton<String>(
+                  tooltip: 'More',
                   onSelected: _handleMenu,
+                  // Grouped: chart view, then files, then app and link.
                   itemBuilder: (_) => [
-                    if (isConnected)
-                      const PopupMenuItem(
-                        value: 'graph',
-                        child: Text('Graph View'),
+                    if (isConnected) ...[
+                      _menuItem(
+                        'maximize-chart',
+                        Icons.open_in_full,
+                        _chartMaximized ? 'Restore layout' : 'Maximize chart',
                       ),
-                    if (isConnected)
-                      PopupMenuItem(
-                        value: 'graph-style',
-                        child: Text('Graph style: $_graphStyleLabel'),
+                      _menuItem(
+                        'graph-style',
+                        Icons.stacked_line_chart,
+                        'Graph style: $_graphStyleLabel',
                       ),
-                    if (isConnected)
-                      PopupMenuItem(
-                        value: 'sample-rate',
-                        child: Text(
-                          'Sample rate: ${_sampleRateLabel(provider)}',
-                        ),
+                      _menuItem(
+                        'chart-window',
+                        Icons.history,
+                        'Chart history: '
+                            '${formatChartWindow(settings.chartWindow)}',
                       ),
-                    if (isConnected)
-                      PopupMenuItem(
-                        value: 'chart-window',
-                        child: Text(
-                          'Chart history: '
-                          '${formatChartWindow(settings.chartWindow)}',
-                        ),
+                      _menuItem(
+                        'sample-rate',
+                        Icons.speed,
+                        'Sample rate: ${_sampleRateLabel(provider)}',
                       ),
-                    if (isConnected)
-                      const PopupMenuItem(
-                        value: 'clear-graph',
-                        child: Text('Clear graph'),
+                      _menuItem('clear-graph', Icons.clear_all, 'Clear chart'),
+                      const PopupMenuDivider(),
+                    ],
+                    _menuItem('snapshot', Icons.table_view, 'Save data (CSV)'),
+                    _menuItem('screenshot', Icons.image, 'Save screenshot'),
+                    // The standalone logger talks to BlueZ directly.
+                    if (Platform.isLinux)
+                      _menuItem(
+                        'copy-cli',
+                        Icons.terminal,
+                        'Copy CSV logger command',
                       ),
-                    const PopupMenuItem(
-                      value: 'copy-cli',
-                      child: Text('Copy CSV logger command'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'snapshot',
-                      child: Text('Save data snapshot'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'screenshot',
-                      child: Text('Save screenshot'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'disconnect',
-                      child: Text('Disconnect'),
+                    const PopupMenuDivider(),
+                    _menuItem('settings', Icons.settings, 'Settings'),
+                    _menuItem(
+                      'disconnect',
+                      Icons.bluetooth_disabled,
+                      'Disconnect',
                     ),
                   ],
                 ),
@@ -419,10 +419,6 @@ class _DeviceScreenState extends State<DeviceScreen>
         final landscapeLayout =
             constraints.maxWidth >= 700 &&
             constraints.maxWidth > constraints.maxHeight;
-        final portraitReadingsHeight = math.min(
-          330.0,
-          math.max(272.0, constraints.maxHeight * 0.25),
-        );
         final readings = ReadingsDisplay(
           ch1Value: ch1Value,
           ch2Value: ch2Value,
@@ -459,6 +455,8 @@ class _DeviceScreenState extends State<DeviceScreen>
           ch2Units: _mode(1).units,
           ch2Max: _displayFullScale(1),
           significantDigits: provider.significantDigits,
+          ch1RangeLabel: _rangeStatus(provider, 0),
+          ch2RangeLabel: _rangeStatus(provider, 1),
           compactLayout: landscapeLayout && constraints.maxHeight < 500,
           stackedLayout: landscapeLayout,
           showFloatingValues: showFloatingReadings,
@@ -489,6 +487,7 @@ class _DeviceScreenState extends State<DeviceScreen>
             ch2Label: _chartLabel(1, continuity: continuityChannel == 1),
             ch1Continuity: continuityChannel == 0,
             ch2Continuity: continuityChannel == 1,
+            timeOrigin: _graphStartTimestamp,
             style: _graphStyle,
           ),
         );
@@ -496,25 +495,24 @@ class _DeviceScreenState extends State<DeviceScreen>
           child: Column(
             children: [
               Expanded(
-                child: landscapeLayout
-                    ? Row(
-                        key: const ValueKey('landscape-meter-layout'),
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(flex: 4, child: readings),
-                          Expanded(flex: 6, child: chart),
-                        ],
-                      )
-                    : Column(
-                        key: const ValueKey('portrait-meter-layout'),
-                        children: [
-                          SizedBox(
-                            height: portraitReadingsHeight,
-                            child: readings,
-                          ),
-                          Expanded(child: chart),
-                        ],
-                      ),
+                // The divider between readings and chart can be dragged;
+                // the split is saved as a preference.
+                child: ResizableSplit(
+                  key: ValueKey(
+                    landscapeLayout
+                        ? 'landscape-meter-layout'
+                        : 'portrait-meter-layout',
+                  ),
+                  axis: landscapeLayout ? Axis.horizontal : Axis.vertical,
+                  fraction: _settingsProvider.readingsFraction,
+                  minFraction: SettingsProvider.minReadingsFraction,
+                  maxFraction: SettingsProvider.maxReadingsFraction,
+                  defaultFraction: SettingsProvider.defaultReadingsFraction,
+                  onChanged: (fraction) =>
+                      _settingsProvider.readingsFraction = fraction,
+                  first: readings,
+                  second: chart,
+                ),
               ),
               _buildSampleFooter(battery: battery, rssi: rssi),
             ],
@@ -554,7 +552,7 @@ class _DeviceScreenState extends State<DeviceScreen>
             ),
             _footerPill(
               icon: Icons.data_usage,
-              label: '$_pointCount samples',
+              label: '${_bleProvider.sampleRateHz} Hz · $_pointCount samples',
               colors: colors,
             ),
           ],
@@ -612,8 +610,12 @@ class _DeviceScreenState extends State<DeviceScreen>
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * 0.85,
+        // Size to the content, so short configurations do not leave a
+        // mostly empty sheet covering the reading being adjusted.
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
+          ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             // Rebuild on provider changes too: auto-ranging and the zero
@@ -637,9 +639,26 @@ class _DeviceScreenState extends State<DeviceScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '$channelName configuration',
-                        style: theme.textTheme.titleLarge,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$channelName configuration',
+                              style: theme.textTheme.titleLarge,
+                            ),
+                          ),
+                          // Live feedback while changing mode and range.
+                          Text(
+                            _liveReading(provider, channel),
+                            key: ValueKey('sheet-live-reading-$channel'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: 'monospace',
+                              color: channel == 0 ? Colors.red : Colors.blue,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -836,6 +855,30 @@ class _DeviceScreenState extends State<DeviceScreen>
               child: const Text('Clear'),
             ),
     );
+  }
+
+  /// The present reading of [channel], formatted for the config sheet.
+  String _liveReading(BleProvider provider, int channel) {
+    final readings = provider.hasFreshReadings ? provider.latestReadings : null;
+    if (readings == null) return '—';
+    final value = _displayValue(readings, channel);
+    if (value.isNaN) return 'OL';
+    return ReadingFormat(
+      units: _mode(channel).units,
+      fullScale: _displayFullScale(channel),
+      significantDigits: provider.significantDigits,
+      displayUnit: channel == 0 ? _ch1DisplayUnit : _ch2DisplayUnit,
+    ).format(value);
+  }
+
+  /// "Auto · 60 V" or "600 V" for the reading card.
+  String? _rangeStatus(BleProvider provider, int channel) {
+    final fullScale = provider.rangeMax(channel);
+    if (fullScale == null) return null;
+    final label = _rangeLabel(fullScale, _mode(channel));
+    return provider.autoRange(channel) && provider.ranges(channel).length > 1
+        ? 'Auto · $label'
+        : label;
   }
 
   String _rangeLabel(double fullScale, ChannelMode mode) {
@@ -1143,11 +1186,49 @@ class _DeviceScreenState extends State<DeviceScreen>
     _ch2Maximum = null;
   }
 
+  /// Where snapshots and screenshots go: the Downloads folder on desktop,
+  /// where people look for saved files, and app documents elsewhere.
   Future<Directory> _recordsDirectory() async {
-    final documents = await getApplicationDocumentsDirectory();
-    final directory = Directory('${documents.path}/Mooshimeter');
+    Directory? base;
+    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+      try {
+        base = await getDownloadsDirectory();
+      } catch (_) {
+        base = null;
+      }
+    }
+    base ??= await getApplicationDocumentsDirectory();
+    final directory = Directory('${base.path}/MooshRevolt');
     if (!await directory.exists()) await directory.create(recursive: true);
     return directory;
+  }
+
+  void _showSaved(File file) {
+    if (!mounted) return;
+    final canReveal = Platform.isMacOS || Platform.isLinux;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Saved ${file.uri.pathSegments.last}'),
+        action: canReveal
+            ? SnackBarAction(
+                label: 'Show',
+                onPressed: () => unawaited(_reveal(file)),
+              )
+            : null,
+      ),
+    );
+  }
+
+  static Future<void> _reveal(File file) async {
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', ['-R', file.path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [file.parent.path]);
+      }
+    } catch (_) {
+      // Revealing is a convenience; the file is saved either way.
+    }
   }
 
   String _timestampName() =>
@@ -1176,7 +1257,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       '${directory.path}/mooshimeter_${kind}_${_timestampName()}.csv',
     );
     await file.writeAsString('${rows.join('\n')}\n');
-    _showMessage('Saved ${file.path}');
+    _showSaved(file);
   }
 
   Future<void> _saveScreenshot() async {
@@ -1191,7 +1272,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     final directory = await _recordsDirectory();
     final file = File('${directory.path}/mooshimeter_${_timestampName()}.png');
     await file.writeAsBytes(data.buffer.asUint8List());
-    _showMessage('Saved ${file.path}');
+    _showSaved(file);
   }
 
   void _showMessage(String message) {
@@ -1370,21 +1451,33 @@ class _DeviceScreenState extends State<DeviceScreen>
     return settings.getRemembered(address);
   }
 
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) =>
+      PopupMenuItem(
+        value: value,
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 12),
+            Flexible(child: Text(label)),
+          ],
+        ),
+      );
+
+  bool get _chartMaximized =>
+      _settingsProvider.readingsFraction <=
+      SettingsProvider.minReadingsFraction;
+
   void _handleMenu(String value) {
     switch (value) {
-      case 'graph':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => GraphScreen(
-              ch1Points: List.of(_ch1Points),
-              ch2Points: List.of(_ch2Points),
-              ch1Label: _chartLabel(0, continuity: false),
-              ch2Label: _chartLabel(1, continuity: false),
-              ch1CsvHeader: _csvHeader(0),
-              ch2CsvHeader: _csvHeader(1),
-            ),
-          ),
-        );
+      case 'maximize-chart':
+        _settingsProvider.readingsFraction = _chartMaximized
+            ? SettingsProvider.defaultReadingsFraction
+            : SettingsProvider.minReadingsFraction;
+        break;
+      case 'settings':
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
         break;
       case 'copy-cli':
         unawaited(_copyCliCommand());

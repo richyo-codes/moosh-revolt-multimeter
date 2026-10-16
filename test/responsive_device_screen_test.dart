@@ -191,7 +191,7 @@ void main() {
 
     expect(find.textContaining('dBm'), findsNothing);
     expect(find.textContaining('Battery'), findsOneWidget);
-    expect(find.text('0 samples'), findsOneWidget);
+    expect(find.text('125 Hz · 0 samples'), findsOneWidget);
   });
 
   testWidgets('shows SD-card logging controls when the card is ready', (
