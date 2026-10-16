@@ -131,6 +131,7 @@ class MockBleProvider extends BleProvider {
         ch1Overload: _overload(0, ch1),
         ch2Overload: _overload(1, ch2),
       );
+      emitReadings(_reading);
       notifyListeners();
     });
   }

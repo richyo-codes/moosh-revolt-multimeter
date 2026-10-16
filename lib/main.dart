@@ -10,6 +10,7 @@ import 'package:moosh_revolt/screens/about_screen.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
+import 'package:moosh_revolt/services/csv_recorder.dart';
 import 'package:moosh_revolt/services/prometheus_exporter.dart';
 
 // --- Shared service instances & navigation key ---
@@ -18,6 +19,7 @@ const mockMode = bool.fromEnvironment('MOOSHREVOLT_MOCK');
 final MockBleProvider? mockBleProvider = mockMode ? MockBleProvider() : null;
 final BleProvider bleProvider = mockBleProvider ?? BleProvider();
 final PrometheusExporter prometheusExporter = PrometheusExporter(bleProvider);
+final CsvRecorder csvRecorder = CsvRecorder(bleProvider);
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -58,6 +60,7 @@ void main() async {
         ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider.value(value: bleProvider),
         ChangeNotifierProvider.value(value: prometheusExporter),
+        ChangeNotifierProvider.value(value: csvRecorder),
       ],
       child: const MooshimeterApp(mockMode: mockMode),
     ),

@@ -190,8 +190,10 @@ class BleProvider extends ChangeNotifier {
   DeviceReadings? _latestReadings;
   DateTime? _lastReadingsAt;
   DateTime? _discardReadingsUntil;
+  // Synchronous, so listeners see each sample together with the
+  // configuration that produced it (a recorder labels rows by mode).
   final StreamController<DeviceReadings> _readingsController =
-      StreamController<DeviceReadings>.broadcast();
+      StreamController<DeviceReadings>.broadcast(sync: true);
 
   int get rssi => _rssi;
 
@@ -221,6 +223,11 @@ class BleProvider extends ChangeNotifier {
   /// This is useful for non-UI clients that need one coherent CSV row per
   /// meter polling cycle rather than a notification for each individual node.
   Stream<DeviceReadings> get readings => _readingsController.stream;
+
+  /// Publishes a complete sample on [readings]; for simulated providers.
+  @protected
+  void emitReadings(DeviceReadings readings) =>
+      _readingsController.add(readings);
   double get battery => _battery;
   bool get isConnected => _state == MmConnectionState.connected;
 

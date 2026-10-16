@@ -19,6 +19,7 @@ import 'package:moosh_revolt/widgets/resizable_split.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/continuity_tone.dart';
+import 'package:moosh_revolt/services/csv_recorder.dart';
 import 'package:moosh_revolt/screens/settings_screen.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
 
@@ -248,6 +249,9 @@ class _DeviceScreenState extends State<DeviceScreen>
               elevation: 0,
               actions: [
                 _connectionStatusWidget(provider.state, compact: compactAppBar),
+                if (_recorder case final recorder?
+                    when isConnected || recorder.recording)
+                  _recordButton(),
                 IconButton(
                   // Distinct from the per-channel "tune" controls: this
                   // configures the meter itself (rate, SD card, device).
@@ -285,7 +289,11 @@ class _DeviceScreenState extends State<DeviceScreen>
                       _menuItem('clear-graph', Icons.clear_all, 'Clear chart'),
                       const PopupMenuDivider(),
                     ],
-                    _menuItem('snapshot', Icons.table_view, 'Save data (CSV)'),
+                    _menuItem(
+                      'snapshot',
+                      Icons.table_view,
+                      'Save chart data (CSV)',
+                    ),
                     _menuItem('screenshot', Icons.image, 'Save screenshot'),
                     // The standalone logger talks to BlueZ directly.
                     if (Platform.isLinux)
@@ -607,6 +615,15 @@ class _DeviceScreenState extends State<DeviceScreen>
                 colors: colors,
               ),
             ),
+            if (_recorder case final recorder? when recorder.recording)
+              _footerPill(
+                icon: Icons.fiber_manual_record,
+                label:
+                    'REC ${_elapsed(recorder.startedAt!)} · '
+                    '${recorder.rows} rows',
+                colors: colors,
+                iconColor: Colors.red,
+              ),
             _footerPill(
               icon: Icons.data_usage,
               label: '${_bleProvider.sampleRateHz} Hz · $_pointCount samples',
@@ -635,6 +652,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     required IconData icon,
     required String label,
     required ColorScheme colors,
+    Color? iconColor,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -645,7 +663,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: colors.onSurfaceVariant),
+          Icon(icon, size: 12, color: iconColor ?? colors.onSurfaceVariant),
           const SizedBox(width: 4),
           Text(
             label,
@@ -1700,6 +1718,44 @@ class _DeviceScreenState extends State<DeviceScreen>
           ],
         ),
       );
+
+  /// The app-wide CSV recorder; absent in tests that do not provide it.
+  /// Build methods watch it, so the REC indicator updates with each row.
+  CsvRecorder? get _recorder => context.watch<CsvRecorder?>();
+
+  /// The recorder for event handlers, which must not subscribe.
+  CsvRecorder? get _recorderForAction => context.read<CsvRecorder?>();
+
+  Widget _recordButton() {
+    final recording = _recorder?.recording ?? false;
+    return IconButton(
+      key: const ValueKey('record-button'),
+      tooltip: recording ? 'Stop recording' : 'Record every reading to CSV',
+      icon: Icon(
+        recording ? Icons.stop_circle : Icons.fiber_manual_record,
+        color: Colors.red,
+      ),
+      onPressed: _toggleRecording,
+    );
+  }
+
+  Future<void> _toggleRecording() async {
+    final recorder = _recorderForAction;
+    if (recorder == null) return;
+    if (recorder.recording) {
+      final file = await recorder.stop();
+      if (file != null) _showSaved(file);
+    } else {
+      await recorder.start(await _recordsDirectory());
+      _showMessage('Recording every reading to CSV');
+    }
+  }
+
+  static String _elapsed(DateTime start) {
+    final d = DateTime.now().difference(start);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.inHours)}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
+  }
 
   bool get _chartMaximized =>
       _settingsProvider.readingsFraction <=

@@ -71,6 +71,18 @@ in degrees Celsius.
 
 You can select a fixed rate from the menu or in Meter settings.
 
+## Recording
+
+Select the red **Record** button in the toolbar to write every reading the
+meter sends to a CSV file in `Downloads/MooshRevolt`. Recording has no time
+limit and keeps going across reconnects; the footer shows the elapsed time
+and the row count. Select the button again to stop.
+
+Each row holds a timestamp and, for each channel, its mode, value and unit,
+for example `current,2.5,A,voltage,14.2,V`. Rows stay correct when you
+change a mode during a recording. Overloaded readings are written as `OL`.
+**Save chart data (CSV)** in the menu exports only what the chart shows.
+
 ## Zero (relative reading)
 
 **Zero** stores the present reading as an offset, and the meter subtracts it
