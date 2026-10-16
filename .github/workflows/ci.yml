@@ -86,3 +86,34 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  macos:
+    # Gitea's Docker-based Act Runner has no macOS host; build there only on
+    # GitHub so the job does not queue forever elsewhere.
+    if: github.server_url == 'https://github.com'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: false
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Build macOS application
+        run: flutter build macos --release
+      - name: Package app bundle
+        run: |
+          ditto -c -k --keepParent \
+            build/macos/Build/Products/Release/MooshRevolt.app \
+            mooshrevolt-macos.zip
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v6
+        with:
+          name: mooshrevolt-macos
+          path: mooshrevolt-macos.zip
+          if-no-files-found: error
+          retention-days: 14
