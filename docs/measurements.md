@@ -101,6 +101,9 @@ constant test current through the part and shows the voltage across it.
 | Schottky diode | 0.2–0.4 V |
 | LED | 1.8–3 V (may light faintly) |
 
+In diode mode, the configuration has a **Short tone** that beeps below
+0.1 V, which means the diode is shorted.
+
 A diode conducts in one direction only. If the reading shows **OL**, reverse
 the probes. A good diode shows a forward voltage in one direction and **OL**
 in the other. An open diode shows **OL** in both directions, because the

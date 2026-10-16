@@ -110,4 +110,15 @@ void main() {
     );
     expect(ChannelMode.voltage.toDisplay(12), 12);
   });
+
+  test('beeps for continuity and for a shorted diode', () {
+    expect(ChannelMode.resistance.beepsAt(-1.2), isTrue);
+    expect(ChannelMode.resistance.beepsAt(470), isFalse);
+    expect(ChannelMode.diode.beepsAt(0.04), isTrue);
+    expect(ChannelMode.diode.beepsAt(0.62), isFalse);
+    expect(ChannelMode.diode.beepsAt(double.nan), isFalse);
+    expect(ChannelMode.voltage.beepsAt(0), isFalse);
+    expect(ChannelMode.diode.hasTone, isTrue);
+    expect(ChannelMode.current.hasTone, isFalse);
+  });
 }

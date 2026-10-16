@@ -93,11 +93,13 @@ class _DeviceScreenState extends State<DeviceScreen>
       _settingsProvider = context.read<SettingsProvider>();
       _bleProvider.addListener(_onBleProviderChanged);
       _providerListenerAttached = true;
-      // Restore a saved continuity tone; it holds the 1 kΩ range.
-      final continuityChannel = _continuityChannel;
-      if (_settingsProvider.continuityTone && continuityChannel != null) {
+      // Restore a saved tone; in resistance mode it holds the 1 kΩ range.
+      final toneChannel = _toneChannel;
+      if (_settingsProvider.continuityTone && toneChannel != null) {
         _setContinuityToneEnabled(true);
-        unawaited(_bleProvider.setRange(continuityChannel, 0));
+        if (_mode(toneChannel) == ChannelMode.resistance) {
+          unawaited(_bleProvider.setRange(toneChannel, 0));
+        }
       }
     }
     _devLog(
@@ -880,33 +882,42 @@ class _DeviceScreenState extends State<DeviceScreen>
           _rangeSelector(channel, provider, (change) => setState(change)),
         ]),
         section('Zero', [_zeroControl(channel, provider)]),
-        if (mode == ChannelMode.resistance)
-          section('Continuity', [
+        if (mode.hasTone)
+          section(mode == ChannelMode.diode ? 'Tone' : 'Continuity', [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               secondary: Icon(
                 _continuityToneEnabled ? Icons.volume_up : Icons.volume_off,
               ),
-              title: const Text('Continuity tone'),
+              title: Text(
+                mode == ChannelMode.diode ? 'Short tone' : 'Continuity tone',
+              ),
               subtitle: Text(
-                'Beep below ${continuityThresholdOhms.round()} Ω. Holds the '
-                '1 kΩ range so the beep follows the probes.',
+                mode == ChannelMode.diode
+                    ? 'Beep below ${diodeShortVolts.toStringAsFixed(1)} V, '
+                          'which means a shorted diode.'
+                    : 'Beep below ${continuityThresholdOhms.round()} Ω. '
+                          'Holds the 1 kΩ range so the beep follows the '
+                          'probes.',
               ),
               value: _continuityToneEnabled,
               onChanged: (enabled) {
                 setState(() => _setContinuityToneEnabled(enabled));
-                unawaited(provider.setRange(channel, enabled ? 0 : null));
+                if (mode == ChannelMode.resistance) {
+                  unawaited(provider.setRange(channel, enabled ? 0 : null));
+                }
               },
             ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.show_chart),
-              title: const Text('Continuity graph'),
-              subtitle: const Text('Plot open or continuous instead of ohms'),
-              value: _continuityGraph,
-              onChanged: (enabled) =>
-                  setState(() => _continuityGraph = enabled),
-            ),
+            if (mode == ChannelMode.resistance)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.show_chart),
+                title: const Text('Continuity graph'),
+                subtitle: const Text('Plot open or continuous instead of ohms'),
+                value: _continuityGraph,
+                onChanged: (enabled) =>
+                    setState(() => _continuityGraph = enabled),
+              ),
           ]),
         section('Display', [
           SwitchListTile(
@@ -1075,7 +1086,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   ) async {
     final previous = _mode(channel);
     if (previous == mode) return;
-    if (_continuityChannel == channel) {
+    if (_toneChannel == channel) {
       setState(() => _setContinuityToneEnabled(false));
     }
     final ok = await provider.setInput(channel, mode.input);
@@ -1116,6 +1127,15 @@ class _DeviceScreenState extends State<DeviceScreen>
   int? get _continuityChannel {
     for (final channel in const [0, 1]) {
       if (_mode(channel) == ChannelMode.resistance) return channel;
+    }
+    return null;
+  }
+
+  /// The channel whose tone is available: resistance or diode, both on the
+  /// shared input, so at most one channel.
+  int? get _toneChannel {
+    for (final channel in const [0, 1]) {
+      if (_mode(channel).hasTone) return channel;
     }
     return null;
   }
@@ -1219,14 +1239,14 @@ class _DeviceScreenState extends State<DeviceScreen>
     final continuityReady =
         _continuityReadyAt != null &&
         !DateTime.now().isBefore(_continuityReadyAt!);
-    final channel = _continuityChannel;
+    final channel = _toneChannel;
     final shouldSound =
         reading != null &&
         channel != null &&
         _bleProvider.state == MmConnectionState.connected &&
         _continuityToneEnabled &&
         continuityReady &&
-        hasContinuity(_displayValue(reading, channel));
+        _mode(channel).beepsAt(_displayValue(reading, channel));
     if (shouldSound == _continuityToneWanted) return;
     _continuityToneWanted = shouldSound;
     if (shouldSound) {

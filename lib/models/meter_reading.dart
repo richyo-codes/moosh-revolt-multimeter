@@ -35,6 +35,10 @@ abstract final class DisplayPreferences {
   static TemperatureUnit temperature = TemperatureUnit.celsius;
 }
 
+/// Diode drop below which the diode counts as shorted and the tone sounds,
+/// as in the original Mooshimeter app.
+const diodeShortVolts = 0.1;
+
 /// What a channel measures, mapped onto the meter's named inputs.
 enum ChannelMode {
   current('Current DC', MeterInput(mapping: 'CURRENT')),
@@ -78,6 +82,17 @@ enum ChannelMode {
       );
 
   bool get usesSharedInput => input.usesShared;
+
+  /// Whether this mode has a continuity-style tone.
+  bool get hasTone => this == resistance || this == diode;
+
+  /// Whether the tone sounds for [value] (in [units]): continuity in
+  /// resistance mode, a shorted diode in diode mode.
+  bool beepsAt(double value) => switch (this) {
+    resistance => hasContinuity(value),
+    diode => value.isFinite && value.abs() < diodeShortVolts,
+    _ => false,
+  };
 
   /// The unit shown to the user. The meter reports temperature in kelvin.
   String get units => switch (this) {
