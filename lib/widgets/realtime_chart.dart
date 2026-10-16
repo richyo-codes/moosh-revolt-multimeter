@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 
 enum GraphStyle { split, dualAxis, sharedAxis }
 
@@ -17,6 +18,17 @@ class RealtimeChart extends StatefulWidget {
   final String ch2Label;
   final GraphStyle style;
 
+  /// Plots CH1 resistance as a two-state open/continuous trace instead of
+  /// ohms.
+  final bool ch1Continuity;
+
+  /// Whether each channel is plotted. A hidden channel keeps its legend
+  /// chip, so it can be shown again from the chart itself.
+  final bool showCh1;
+  final bool showCh2;
+  final ValueChanged<bool>? onCh1VisibilityChanged;
+  final ValueChanged<bool>? onCh2VisibilityChanged;
+
   const RealtimeChart({
     super.key,
     required this.ch1Points,
@@ -28,6 +40,11 @@ class RealtimeChart extends StatefulWidget {
     this.ch1Label = 'Current (A)',
     this.ch2Label = 'Voltage (V)',
     this.style = GraphStyle.dualAxis,
+    this.ch1Continuity = false,
+    this.showCh1 = true,
+    this.showCh2 = true,
+    this.onCh1VisibilityChanged,
+    this.onCh2VisibilityChanged,
   });
 
   @override
@@ -45,42 +62,74 @@ class _RealtimeChartState extends State<RealtimeChart> {
       _isDark ? const Color(0xFFB7C0CC) : const Color(0xFF334155);
   Color get _gridColor =>
       _isDark ? Colors.white.withAlpha(24) : const Color(0xFFD2D8DE);
-  double _yMin1 = -600;
-  double _yMax1 = 600;
-  double _yMin2 = -10;
-  double _yMax2 = 10;
+  ChartAxisRange _range1 = const ChartAxisRange(-600, 600, 200);
+  ChartAxisRange _range2 = const ChartAxisRange(-10, 10, 5);
+  ChartAxisRange? _sharedRange;
+  List<LinePoint> _ch1Series = const [];
+
+  /// Continuity values are 0 (open) and 1 (continuous); the half-step margin
+  /// keeps both levels clear of the plot border.
+  static const _continuityRange = ChartAxisRange(-0.5, 1.5, 0.5);
+
+  @override
+  void initState() {
+    super.initState();
+    _updateRanges();
+  }
 
   @override
   void didUpdateWidget(covariant RealtimeChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.ch1Points.isNotEmpty) {
-      double min = double.infinity;
-      double max = -double.infinity;
-      for (final p in widget.ch1Points) {
-        if (p.y < min) min = p.y;
-        if (p.y > max) max = p.y;
-      }
-      final padding = _padding(min, max);
-      _yMin1 = min - padding;
-      _yMax1 = max + padding;
+    _updateRanges();
+  }
+
+  void _updateRanges() {
+    _ch1Series = widget.ch1Continuity
+        ? [
+            for (final p in widget.ch1Points)
+              LinePoint(p.x, hasContinuity(p.y) ? 1 : 0),
+          ]
+        : widget.ch1Points;
+    final ch1 = _extent(_ch1Series);
+    final ch2 = _extent(widget.ch2Points);
+    if (widget.ch1Continuity) {
+      _range1 = _continuityRange;
+    } else if (ch1 != null) {
+      _range1 = ChartAxisRange.resolve(ch1.$1, ch1.$2, _range1);
     }
-    if (widget.ch2Points.isNotEmpty) {
-      double min = double.infinity;
-      double max = -double.infinity;
-      for (final p in widget.ch2Points) {
-        if (p.y < min) min = p.y;
-        if (p.y > max) max = p.y;
-      }
-      final padding = _padding(min, max);
-      _yMin2 = min - padding;
-      _yMax2 = max + padding;
+    if (ch2 != null) _range2 = ChartAxisRange.resolve(ch2.$1, ch2.$2, _range2);
+    if (ch1 != null || ch2 != null) {
+      _sharedRange = ChartAxisRange.resolve(
+        math.min(ch1?.$1 ?? double.infinity, ch2?.$1 ?? double.infinity),
+        math.max(ch1?.$2 ?? -double.infinity, ch2?.$2 ?? -double.infinity),
+        _sharedRange,
+      );
     }
   }
 
-  double _padding(double min, double max) {
-    final span = max - min;
-    final magnitude = math.max(min.abs(), max.abs());
-    return math.max(math.max(span * 0.2, magnitude * 0.1), 1e-9);
+  static (double, double)? _extent(List<LinePoint> points) {
+    if (points.isEmpty) return null;
+    var min = double.infinity;
+    var max = -double.infinity;
+    for (final p in points) {
+      if (p.y < min) min = p.y;
+      if (p.y > max) max = p.y;
+    }
+    return (min, max);
+  }
+
+  /// The visible time window, shared by every layer so stacked dual-axis
+  /// charts scroll in lockstep.
+  (double, double) get _xWindow {
+    var minX = double.infinity;
+    var maxX = -double.infinity;
+    for (final points in [widget.ch1Points, widget.ch2Points]) {
+      if (points.isEmpty) continue;
+      minX = math.min(minX, points.first.x);
+      maxX = math.max(maxX, points.last.x);
+    }
+    if (minX == maxX) return (minX - 0.5, maxX + 0.5);
+    return (minX, maxX);
   }
 
   @override
@@ -94,24 +143,29 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       child: Column(
         children: [
-          // Legend
+          // Legend: each entry toggles its channel's visibility.
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                Flexible(
-                  child: _LegendDot(
-                    color: widget.ch1Color,
-                    label: widget.ch1Label,
-                  ),
+                _LegendToggle(
+                  key: const ValueKey('legend-ch1'),
+                  channel: 'CH1',
+                  color: widget.ch1Color,
+                  label: widget.ch1Label,
+                  visible: widget.showCh1,
+                  onChanged: widget.onCh1VisibilityChanged,
                 ),
-                const SizedBox(width: 24),
-                Flexible(
-                  child: _LegendDot(
-                    color: widget.ch2Color,
-                    label: widget.ch2Label,
-                  ),
+                _LegendToggle(
+                  key: const ValueKey('legend-ch2'),
+                  channel: 'CH2',
+                  color: widget.ch2Color,
+                  label: widget.ch2Label,
+                  visible: widget.showCh2,
+                  onChanged: widget.onCh2VisibilityChanged,
                 ),
               ],
             ),
@@ -121,13 +175,12 @@ class _RealtimeChartState extends State<RealtimeChart> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: widget.ch1Points.isEmpty && widget.ch2Points.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Waiting for samples…',
-                        style: TextStyle(color: _plotText),
-                      ),
+              child: !widget.showCh1 && !widget.showCh2
+                  ? _placeholder(
+                      'Both channels are hidden. Tap CH1 or CH2 above.',
                     )
+                  : widget.ch1Points.isEmpty && widget.ch2Points.isEmpty
+                  ? _placeholder('Waiting for samples…')
                   : _buildChartArea(),
             ),
           ),
@@ -136,70 +189,58 @@ class _RealtimeChartState extends State<RealtimeChart> {
     );
   }
 
+  Widget _placeholder(String text) => Center(
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(color: _plotText),
+    ),
+  );
+
+  Widget _ch1Chart({bool showGrid = true}) => LineChart(
+    _singleChartData(
+      _ch1Series,
+      widget.ch1Color,
+      _range1,
+      widget.ch1Label,
+      showGrid: showGrid,
+      continuity: widget.ch1Continuity,
+    ),
+    duration: Duration.zero,
+  );
+
+  Widget _ch2Chart({bool rightAxis = false, bool showGrid = true}) => LineChart(
+    _singleChartData(
+      widget.ch2Points,
+      widget.ch2Color,
+      _range2,
+      widget.ch2Label,
+      rightAxis: rightAxis,
+      showGrid: showGrid,
+    ),
+    duration: Duration.zero,
+  );
+
   Widget _buildChartArea() {
+    // A single visible channel always gets a full plot with its own axis and
+    // grid, whatever the two-channel style is.
+    if (!widget.showCh2) return _ch1Chart();
+    if (!widget.showCh1) return _ch2Chart();
     switch (widget.style) {
       case GraphStyle.sharedAxis:
-        return LineChart(
-          _chartData(),
-          duration: const Duration(milliseconds: 100),
-        );
+        return LineChart(_chartData(), duration: Duration.zero);
       case GraphStyle.split:
         return Column(
           children: [
-            Expanded(
-              child: LineChart(
-                _singleChartData(
-                  widget.ch1Points,
-                  widget.ch1Color,
-                  _yMin1,
-                  _yMax1,
-                  widget.ch1Label,
-                ),
-                duration: const Duration(milliseconds: 100),
-              ),
-            ),
+            Expanded(child: _ch1Chart(showGrid: false)),
             Divider(height: 1, color: _plotBorder),
-            Expanded(
-              child: LineChart(
-                _singleChartData(
-                  widget.ch2Points,
-                  widget.ch2Color,
-                  _yMin2,
-                  _yMax2,
-                  widget.ch2Label,
-                ),
-                duration: const Duration(milliseconds: 100),
-              ),
-            ),
+            Expanded(child: _ch2Chart(showGrid: false)),
           ],
         );
       case GraphStyle.dualAxis:
         return Stack(
           fit: StackFit.expand,
-          children: [
-            LineChart(
-              _singleChartData(
-                widget.ch1Points,
-                widget.ch1Color,
-                _yMin1,
-                _yMax1,
-                widget.ch1Label,
-                showGrid: true,
-              ),
-              duration: const Duration(milliseconds: 100),
-            ),
-            LineChart(
-              _singleChartData(
-                widget.ch2Points,
-                widget.ch2Color,
-                _yMin2,
-                _yMax2,
-                widget.ch2Label,
-                rightAxis: true,
-              ),
-              duration: const Duration(milliseconds: 100),
-            ),
-          ],
+          children: [_ch1Chart(), _ch2Chart(rightAxis: true, showGrid: false)],
         );
     }
   }
@@ -207,20 +248,21 @@ class _RealtimeChartState extends State<RealtimeChart> {
   LineChartData _singleChartData(
     List<LinePoint> points,
     Color color,
-    double minY,
-    double maxY,
+    ChartAxisRange range,
     String label, {
     bool rightAxis = false,
     bool showGrid = false,
+    bool continuity = false,
   }) {
     final spots = points.map((point) => FlSpot(point.x, point.y)).toList();
     final axisTitles = SideTitles(
       showTitles: true,
       reservedSize: 44,
-      getTitlesWidget: (value, meta) => Text(
-        _formatAxisValue(value),
-        style: TextStyle(fontSize: 9, color: _plotText),
-      ),
+      interval: range.step,
+      getTitlesWidget: (value, meta) {
+        final text = continuity ? _continuityLabel(value) : range.format(value);
+        return Text(text, style: TextStyle(fontSize: 9, color: _plotText));
+      },
     );
     // Both layers of the dual-axis Stack must reserve identical plot gutters.
     // `showTitles: false` collapses the gutter in fl_chart, which lets the
@@ -228,15 +270,20 @@ class _RealtimeChartState extends State<RealtimeChart> {
     final blankAxisTitles = SideTitles(
       showTitles: true,
       reservedSize: 64,
+      interval: range.step,
       getTitlesWidget: (_, _) => const SizedBox.shrink(),
     );
+    final (minX, maxX) = _xWindow;
     return LineChartData(
-      minY: minY,
-      maxY: maxY,
+      minX: minX,
+      maxX: maxX,
+      minY: range.min,
+      maxY: range.max,
       clipData: const FlClipData.all(),
       gridData: FlGridData(
         show: showGrid,
         drawVerticalLine: true,
+        horizontalInterval: range.step,
         getDrawingHorizontalLine: (value) =>
             FlLine(color: _gridColor, strokeWidth: 0.5),
         getDrawingVerticalLine: (value) =>
@@ -264,6 +311,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
         LineChartBarData(
           spots: spots,
           isCurved: false,
+          isStepLineChart: continuity,
           color: color,
           barWidth: 2,
           isStrokeCapRound: true,
@@ -278,18 +326,25 @@ class _RealtimeChartState extends State<RealtimeChart> {
   }
 
   LineChartData _chartData() {
-    final ch1Spots = widget.ch1Points
+    final ch1Spots = _ch1Series
         .map((point) => FlSpot(point.x, point.y))
         .toList();
     final ch2Spots = widget.ch2Points
         .map((point) => FlSpot(point.x, point.y))
         .toList();
+    final range = _sharedRange ?? _range1;
+    final (minX, maxX) = _xWindow;
 
     return LineChartData(
+      minX: minX,
+      maxX: maxX,
+      minY: range.min,
+      maxY: range.max,
       clipData: const FlClipData.all(),
       gridData: FlGridData(
         show: true,
         drawVerticalLine: true,
+        horizontalInterval: range.step,
         getDrawingHorizontalLine: (value) =>
             FlLine(color: _gridColor, strokeWidth: 0.5),
         getDrawingVerticalLine: (value) =>
@@ -307,9 +362,10 @@ class _RealtimeChartState extends State<RealtimeChart> {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 40,
+            interval: range.step,
             getTitlesWidget: (value, meta) {
               return Text(
-                _formatAxisValue(value),
+                range.format(value),
                 style: TextStyle(fontSize: 9, color: _plotText),
               );
             },
@@ -327,6 +383,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
           LineChartBarData(
             spots: ch1Spots,
             isCurved: false,
+            isStepLineChart: widget.ch1Continuity,
             color: widget.ch1Color,
             barWidth: 2,
             isStrokeCapRound: true,
@@ -351,30 +408,14 @@ class _RealtimeChartState extends State<RealtimeChart> {
             ),
           ),
       ],
-      minY: ch1Spots.isEmpty
-          ? _yMin2
-          : ch2Spots.isEmpty
-          ? _yMin1
-          : math.min(_yMin1, _yMin2),
-      maxY: ch1Spots.isEmpty
-          ? _yMax2
-          : ch2Spots.isEmpty
-          ? _yMax1
-          : math.max(_yMax1, _yMax2),
     );
   }
 
-  String _formatAxisValue(double value) {
-    final magnitude = value.abs();
-    final decimals = switch (magnitude) {
-      >= 100 => 0,
-      >= 10 => 1,
-      >= 1 => 2,
-      >= 0.1 => 3,
-      _ => 4,
-    };
-    return value.toStringAsFixed(decimals);
-  }
+  static String _continuityLabel(double value) => switch (value) {
+    0 => 'Open',
+    1 => 'Cont.',
+    _ => '',
+  };
 
   Widget _axisLabel(String label, Color color) => Text(
     label,
@@ -382,36 +423,131 @@ class _RealtimeChartState extends State<RealtimeChart> {
   );
 }
 
-class _LegendDot extends StatelessWidget {
+class _LegendToggle extends StatelessWidget {
+  const _LegendToggle({
+    super.key,
+    required this.channel,
+    required this.color,
+    required this.label,
+    required this.visible,
+    this.onChanged,
+  });
+
+  final String channel;
   final Color color;
   final String label;
-  const _LegendDot({required this.color, required this.label});
+  final bool visible;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final textColor = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFB7C0CC)
+        : const Color(0xFF334155);
+    return Tooltip(
+      message: visible ? 'Hide $channel' : 'Show $channel',
+      child: FilterChip(
+        selected: visible,
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        side: BorderSide(color: visible ? color : textColor.withAlpha(90)),
+        selectedColor: color.withAlpha(36),
+        backgroundColor: Colors.transparent,
+        avatar: Icon(
+          visible ? Icons.visibility : Icons.visibility_off,
+          size: 16,
+          color: visible ? color : textColor.withAlpha(140),
         ),
-        const SizedBox(width: 4),
-        Flexible(
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 260),
           child: Text(
             label,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFFB7C0CC)
-                  : const Color(0xFF334155),
+              color: visible ? textColor : textColor.withAlpha(140),
+              decoration: visible ? null : TextDecoration.lineThrough,
             ),
           ),
         ),
-      ],
+        onSelected: onChanged,
+      ),
     );
+  }
+}
+
+/// A Y-axis range that stays put while live samples scroll through it.
+///
+/// Recomputing the axis from the exact min/max of every frame makes the plot
+/// rescale (and its labels change) whenever a sample enters or leaves the
+/// window. Instead the range snaps to round grid steps, grows immediately when
+/// data would leave it, and only shrinks once the data occupies a small part
+/// of it.
+class ChartAxisRange {
+  const ChartAxisRange(this.min, this.max, this.step);
+
+  final double min;
+  final double max;
+  final double step;
+
+  double get span => max - min;
+
+  /// Below this fraction of the current span the axis shrinks to fit again.
+  static const shrinkThreshold = 0.4;
+
+  static const _gridLines = 4;
+
+  static ChartAxisRange resolve(
+    double dataMin,
+    double dataMax,
+    ChartAxisRange? previous,
+  ) {
+    final target = fit(dataMin, dataMax);
+    if (previous != null &&
+        previous.min <= dataMin &&
+        previous.max >= dataMax &&
+        target.span >= previous.span * shrinkThreshold) {
+      return previous;
+    }
+    return target;
+  }
+
+  /// The tightest round range around the data, with headroom so the trace
+  /// never sits on the plot border.
+  static ChartAxisRange fit(double dataMin, double dataMax) {
+    final dataSpan = dataMax - dataMin;
+    final magnitude = math.max(dataMin.abs(), dataMax.abs());
+    final padding = math.max(math.max(dataSpan * 0.2, magnitude * 0.1), 1e-9);
+    final step = _niceStep((dataSpan + 2 * padding) / _gridLines);
+    return ChartAxisRange(
+      ((dataMin - padding) / step).floorToDouble() * step,
+      ((dataMax + padding) / step).ceilToDouble() * step,
+      step,
+    );
+  }
+
+  static double _niceStep(double rough) {
+    final exponent = (math.log(rough) / math.ln10).floorToDouble();
+    final base = math.pow(10, exponent).toDouble();
+    final fraction = rough / base;
+    final nice = fraction <= 1
+        ? 1
+        : fraction <= 2
+        ? 2
+        : fraction <= 5
+        ? 5
+        : 10;
+    return nice * base;
+  }
+
+  /// Formats a tick with just enough decimals to tell neighbouring ticks
+  /// apart.
+  String format(double value) {
+    final decimals = (-(math.log(step) / math.ln10).floor()).clamp(0, 9);
+    // Avoid "-0.00" for a tick computed as a tiny negative rounding error.
+    final rounded = value.abs() < step / 1000 ? 0.0 : value;
+    return rounded.toStringAsFixed(decimals);
   }
 }
 

@@ -26,6 +26,19 @@ class MeterReading {
   bool get isOutOfRange => value.abs() > 1.2 * max;
 }
 
+/// Resistance below which a probe pair counts as continuous, matching the
+/// beep threshold of typical bench meters (Fluke uses 25–70 Ω).
+const continuityThresholdOhms = 50.0;
+
+/// Whether a resistance reading indicates continuity.
+///
+/// Shorted probes read slightly negative (about −1 Ω on the 1 kΩ range)
+/// because the meter's zero offset exceeds the lead resistance, so the test
+/// is on magnitude. Readings far below zero are front-end saturation (the
+/// mirror of the ~1266 Ω open-circuit limit), not a short, and stay silent.
+bool hasContinuity(double ohms) =>
+    ohms.isFinite && ohms.abs() < continuityThresholdOhms;
+
 /// Channel type for Mooshimeter readings.
 enum Channel {
   ch1('Ch1', 'A', 6, 10), // Current input
@@ -65,9 +78,19 @@ enum DisplayUnit {
   micro('μ', 1e6),
   milli('m', 1e3),
   base('', 1),
-  kilo('k', 1e-3);
+  kilo('k', 1e-3),
+  mega('M', 1e-6);
 
   const DisplayUnit(this.prefix, this.multiplier);
+
+  /// The prefixes a bench meter offers for [baseUnit]: resistance ranges
+  /// span Ω to MΩ, temperatures are never prefixed, and voltage/current span
+  /// nano to kilo.
+  static List<DisplayUnit> choicesFor(String baseUnit) => switch (baseUnit) {
+    'Ω' => const [auto, base, kilo, mega],
+    '°C' || '°F' => const [auto, base],
+    _ => const [auto, nano, micro, milli, base, kilo],
+  };
 
   final String prefix;
   final double? multiplier;
@@ -102,6 +125,23 @@ enum ChannelMode {
   const ChannelMode(this.label, this.hardwareIndex);
   final String label;
   final int hardwareIndex;
+
+  /// The base unit the meter reports for this mode. The firmware returns
+  /// resistance in ohms and diode drop in volts, independent of the input.
+  String unitsFor(int channel) => switch (this) {
+    resistance => 'Ω',
+    internalTemperature || temperatureC => '°C',
+    temperatureF => '°F',
+    frequency => 'Hz',
+    period => 's',
+    voltage ||
+    voltageAc ||
+    diode ||
+    auxiliaryVoltageDc ||
+    auxiliaryVoltageAc => 'V',
+    current || currentAc => 'A',
+    auto => channel == 0 ? 'A' : 'V',
+  };
 }
 
 /// A device that has been discovered and possibly connected.

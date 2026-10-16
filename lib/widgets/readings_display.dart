@@ -36,6 +36,9 @@ class ReadingsDisplay extends StatelessWidget {
   final bool showCh1;
   final bool showCh2;
 
+  /// Shows a hidden channel again (0 = CH1, 1 = CH2).
+  final ValueChanged<int>? onShowChannel;
+
   const ReadingsDisplay({
     super.key,
     required this.ch1Value,
@@ -70,6 +73,7 @@ class ReadingsDisplay extends StatelessWidget {
     this.hasFreshSample = true,
     this.showCh1 = true,
     this.showCh2 = true,
+    this.onShowChannel,
   });
 
   @override
@@ -161,9 +165,29 @@ class ReadingsDisplay extends StatelessWidget {
           showFloatingValues: showFloatingValues,
         );
         if (!showCh1 && !showCh2) {
-          return const Center(
-            key: ValueKey('channel-readings-none'),
-            child: Text('Enable a channel to show its reading'),
+          return Center(
+            key: const ValueKey('channel-readings-none'),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                const Text('Both channels are hidden'),
+                if (onShowChannel != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => onShowChannel!(0),
+                    icon: const Icon(Icons.visibility, size: 18),
+                    label: const Text('Show CH1'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => onShowChannel!(1),
+                    icon: const Icon(Icons.visibility, size: 18),
+                    label: const Text('Show CH2'),
+                  ),
+                ],
+              ],
+            ),
           );
         }
         if (!showCh1) {
@@ -308,7 +332,7 @@ class _ChannelReading extends StatelessWidget {
                   tooltip: 'Display units: Auto chooses an SI prefix',
                   initialValue: displayUnit,
                   onSelected: onDisplayUnitChanged,
-                  itemBuilder: (_) => DisplayUnit.values
+                  itemBuilder: (_) => DisplayUnit.choicesFor(units)
                       .map(
                         (unit) => PopupMenuItem(
                           value: unit,
@@ -394,7 +418,7 @@ class _ChannelReading extends StatelessWidget {
                     tooltip: 'Display units: Auto chooses an SI prefix',
                     initialValue: displayUnit,
                     onSelected: onDisplayUnitChanged,
-                    itemBuilder: (_) => DisplayUnit.values
+                    itemBuilder: (_) => DisplayUnit.choicesFor(units)
                         .map(
                           (unit) => PopupMenuItem(
                             value: unit,

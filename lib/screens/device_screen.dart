@@ -52,6 +52,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   bool _showCh2 = true;
   GraphStyle _graphStyle = GraphStyle.dualAxis;
   bool _continuityToneEnabled = false;
+  bool _continuityGraph = false;
   bool _ch1MinMaxTracking = false;
   bool _ch2MinMaxTracking = false;
   double? _ch1Minimum;
@@ -428,13 +429,31 @@ class _DeviceScreenState extends State<DeviceScreen>
           hasFreshSample: hasFreshReadings,
           showCh1: _showCh1,
           showCh2: _showCh2,
+          onShowChannel: (channel) => setState(() {
+            if (channel == 0) {
+              _showCh1 = true;
+            } else {
+              _showCh2 = true;
+            }
+          }),
         );
+        final ch1Continuity =
+            _continuityGraph && _ch1Mode == ChannelMode.resistance;
         final chart = Padding(
           padding: const EdgeInsets.all(12),
           child: RealtimeChart(
-            ch1Points: _showCh1 ? _ch1Points : const [],
-            ch2Points: _showCh2 ? _ch2Points : const [],
-            ch1Label: 'CH1 · ${_ch1Mode.label} (${_channelUnits(0, _ch1Mode)})',
+            ch1Points: _ch1Points,
+            ch2Points: _ch2Points,
+            showCh1: _showCh1,
+            showCh2: _showCh2,
+            onCh1VisibilityChanged: (visible) =>
+                setState(() => _showCh1 = visible),
+            onCh2VisibilityChanged: (visible) =>
+                setState(() => _showCh2 = visible),
+            ch1Label: ch1Continuity
+                ? 'CH1 · Continuity (< ${continuityThresholdOhms.round()} Ω)'
+                : 'CH1 · ${_ch1Mode.label} (${_channelUnits(0, _ch1Mode)})',
+            ch1Continuity: ch1Continuity,
             ch2Label: 'CH2 · ${_ch2Mode.label} (${_channelUnits(1, _ch2Mode)})',
             style: _graphStyle,
           ),
@@ -611,8 +630,9 @@ class _DeviceScreenState extends State<DeviceScreen>
                               : Icons.volume_off,
                         ),
                         title: const Text('Continuity tone'),
-                        subtitle: const Text(
-                          'Play a continuous tone below 50 Ω',
+                        subtitle: Text(
+                          'Play a continuous tone below '
+                          '${continuityThresholdOhms.round()} Ω',
                         ),
                         value: _continuityToneEnabled,
                         onChanged: (enabled) {
@@ -626,6 +646,19 @@ class _DeviceScreenState extends State<DeviceScreen>
                             _continuityToneWanted = false;
                             _stopContinuityTone();
                           }
+                          setSheetState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.show_chart),
+                        title: const Text('Continuity graph'),
+                        subtitle: const Text(
+                          'Plot open or continuous instead of ohms',
+                        ),
+                        value: _continuityGraph,
+                        onChanged: (enabled) {
+                          setState(() => _continuityGraph = enabled);
                           setSheetState(() {});
                         },
                       ),
@@ -739,9 +772,17 @@ class _DeviceScreenState extends State<DeviceScreen>
     }
     if (!mounted) return;
     setState(() {
+      // A fixed prefix chosen for the old quantity (for example mA) is
+      // meaningless for the new one (mΩ), so fall back to auto-ranging.
       if (channel == 0) {
+        if (_ch1Mode.unitsFor(0) != mode.unitsFor(0)) {
+          _ch1DisplayUnit = DisplayUnit.auto;
+        }
         _ch1Mode = mode;
       } else {
+        if (_ch2Mode.unitsFor(1) != mode.unitsFor(1)) {
+          _ch2DisplayUnit = DisplayUnit.auto;
+        }
         _ch2Mode = mode;
       }
     });
@@ -763,15 +804,7 @@ class _DeviceScreenState extends State<DeviceScreen>
           ChannelMode.internalTemperature,
         ];
 
-  String _channelUnits(int channel, ChannelMode mode) {
-    if (mode == ChannelMode.internalTemperature) return '°C';
-    if (channel == 0 &&
-        (mode == ChannelMode.auxiliaryVoltageDc ||
-            mode == ChannelMode.auxiliaryVoltageAc)) {
-      return 'V';
-    }
-    return channel == 0 ? 'A' : 'V';
-  }
+  String _channelUnits(int channel, ChannelMode mode) => mode.unitsFor(channel);
 
   double _channelMax(int channel, ChannelMode mode) {
     if (mode == ChannelMode.resistance) return 1000;
@@ -866,8 +899,7 @@ class _DeviceScreenState extends State<DeviceScreen>
         _continuityToneEnabled &&
         _ch1Mode == ChannelMode.resistance &&
         continuityReady &&
-        reading.ch1Value >= 0 &&
-        reading.ch1Value < 50;
+        hasContinuity(reading.ch1Value);
     if (shouldSound) {
       _continuityToneWanted = true;
       unawaited(_startContinuityTone());
