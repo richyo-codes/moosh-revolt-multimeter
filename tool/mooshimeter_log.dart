@@ -39,7 +39,11 @@ Future<void> main(List<String> arguments) async {
       await stop(exitCode: 2);
       return;
     }
-    meter = _MooshimeterCliConnection(device, options.sampleRate);
+    meter = _MooshimeterCliConnection(
+      device,
+      options.sampleRate,
+      options.voltageRange,
+    );
     stderr.writeln(
       'Connecting to ${device.name.isEmpty ? 'Mooshimeter' : device.name} (${device.address})…',
     );
@@ -51,7 +55,7 @@ Future<void> main(List<String> arguments) async {
     if (options.outputPath != '-') ownedFile = sink;
     sink.writeln(_csvHeader(options.channels));
     meter.readings.listen((reading) {
-      sink.writeln(_csvRow(reading, options.channels));
+      sink.writeln(_csvRow(reading, options));
       rows++;
     });
     stderr.writeln(
@@ -109,13 +113,16 @@ Future<BlueZDevice?> _selectDevice(
 }
 
 class _MooshimeterCliConnection {
-  _MooshimeterCliConnection(this.device, this.sampleRate);
+  _MooshimeterCliConnection(this.device, this.sampleRate, this.voltageRange);
 
   static const serviceUuid = '1bc5ffa0-0200-62ab-e411-f254e005dbd4';
   static const writeUuid = '1bc5ffa1-0200-62ab-e411-f254e005dbd4';
   static const notifyUuid = '1bc5ffa2-0200-62ab-e411-f254e005dbd4';
   final BlueZDevice device;
   final int sampleRate;
+
+  /// CH2 full scale in volts: 60 or 600.
+  final int voltageRange;
   final _serial = MooshimeterSerialReassembler();
   final _decoder = MooshimeterFrameDecoder();
   final _readings = StreamController<_CliReading>.broadcast();
@@ -181,20 +188,39 @@ class _MooshimeterCliConnection {
     await _writeNode(0, _u32(_crc32(compressed)));
   }
 
+  /// Configures CH1 for DC current and CH2 for DC voltage. Every option is
+  /// selected by name from the meter's own tree, as in the app: the meter
+  /// keeps its last configuration, so a meter left in resistance mode
+  /// would otherwise be logged as "current".
   Future<void> _configure() async {
-    const rates = [125, 250, 500, 1000, 2000, 4000, 8000];
-    final rateIndex = rates.indexWhere((rate) => rate >= sampleRate);
-    await _writeChooser(
-      _nodeId('SAMPLING:RATE', 9),
-      rateIndex < 0 ? rates.length - 1 : rateIndex,
+    await _writeOption('SAMPLING:RATE', '$sampleRate');
+    await _writeOption('SAMPLING:DEPTH', '64');
+    await _writeOption('CH1:MAPPING', 'CURRENT');
+    await _writeOption('CH1:ANALYSIS', 'MEAN');
+    await _writeOption('CH2:MAPPING', 'VOLTAGE');
+    await _writeOption('CH2:ANALYSIS', 'MEAN');
+    await _writeNode(_nodeId('CH1:RANGE_I', 23), [0]); // 10 A, the only range
+    await _writeNode(_nodeId('CH2:RANGE_I', 31), [
+      _optionIndex('CH2:MAPPING:VOLTAGE', '$voltageRange'),
+    ]);
+    await _writeOption('SAMPLING:TRIGGER', 'CONTINUOUS');
+  }
+
+  /// Writes the chooser at [path] to the option called [option].
+  Future<void> _writeOption(String path, String option) =>
+      _writeNode(_nodeId(path, -1), [_optionIndex(path, option)]);
+
+  int _optionIndex(String path, String option) {
+    final node = _tree?.find(path);
+    final index = node?.children.indexWhere(
+      (child) =>
+          child.name == option ||
+          double.tryParse(child.name) == double.tryParse(option),
     );
-    await _writeChooser(_nodeId('SAMPLING:DEPTH', 10), 1); // 64 samples
-    await _writeChooser(_nodeId('CH1:ANALYSIS', 24), 0); // CH1 mean/DC
-    await _writeChooser(_nodeId('CH2:ANALYSIS', 32), 0); // CH2 mean/DC
-    await _writeChooser(_nodeId('CH2:MAPPING', 30), 0); // CH2 voltage
-    await _writeChooser(_nodeId('CH1:RANGE_I', 23), 0); // CH1 10 A
-    await _writeChooser(_nodeId('CH2:RANGE_I', 31), 0); // CH2 60 V
-    await _writeChooser(_nodeId('SAMPLING:TRIGGER', 11), 2); // continuous
+    if (node == null || index == null || index < 0) {
+      throw StateError('The meter has no option "$option" for $path.');
+    }
+    return index;
   }
 
   Future<void> _poll() async {
@@ -211,9 +237,6 @@ class _MooshimeterCliConnection {
     await _send(nodeId, const []);
     return response;
   }
-
-  Future<void> _writeChooser(int nodeId, int value) =>
-      _writeNode(nodeId, [value]);
 
   Future<void> _writeNode(int nodeId, Iterable<int> payload) async {
     final response = _waitFor(nodeId);
@@ -266,18 +289,12 @@ class _MooshimeterCliConnection {
     await _readings.close();
   }
 
+  /// The id of the node at the complete [path]. A suffix match would also
+  /// hit option nodes, for example `CH1:MAPPING:SHARED` for `SHARED`.
   int _nodeId(String path, int fallback) {
-    MooshimeterNode? match;
-    void visit(MooshimeterNode node) {
-      if (node.path == path || node.path.endsWith(':$path')) match = node;
-      for (final child in node.children) {
-        visit(child);
-      }
-    }
-
-    final tree = _tree;
-    if (tree != null) visit(tree);
-    return match?.id ?? fallback;
+    final id = _tree?.find(path)?.id ?? fallback;
+    if (id < 0) throw StateError('The meter has no node $path.');
+    return id;
   }
 }
 
@@ -308,20 +325,26 @@ String _csvHeader(_ChannelSelection channels) => switch (channels) {
   _ChannelSelection.both => 'timestamp_iso8601,unix_seconds,ch1_a,ch2_v',
 };
 
-String _csvRow(_CliReading reading, _ChannelSelection channels) {
+/// A reading above 120% of full scale is a saturated input, written as OL.
+String _value(double value, double fullScale) =>
+    !value.isFinite || value.abs() > 1.2 * fullScale ? 'OL' : value.toString();
+
+String _csvRow(_CliReading reading, _LoggerOptions options) {
+  final ch1 = _value(reading.ch1, 10);
+  final ch2 = _value(reading.ch2, options.voltageRange.toDouble());
   final fields = [
     reading.time.toIso8601String(),
     (reading.time.millisecondsSinceEpoch / 1000).toStringAsFixed(3),
   ];
-  switch (channels) {
+  switch (options.channels) {
     case _ChannelSelection.ch1:
-      fields.add(reading.ch1.toString());
+      fields.add(ch1);
     case _ChannelSelection.ch2:
-      fields.add(reading.ch2.toString());
+      fields.add(ch2);
     case _ChannelSelection.both:
       fields
-        ..add(reading.ch1.toString())
-        ..add(reading.ch2.toString());
+        ..add(ch1)
+        ..add(ch2);
   }
   return fields.join(',');
 }
@@ -341,6 +364,7 @@ class _LoggerOptions {
     required this.channels,
     required this.outputPath,
     required this.sampleRate,
+    required this.voltageRange,
     required this.scanTimeout,
     required this.duration,
     required this.showHelp,
@@ -349,6 +373,7 @@ class _LoggerOptions {
   final _ChannelSelection channels;
   final String outputPath;
   final int sampleRate;
+  final int voltageRange;
   final Duration scanTimeout;
   final Duration? duration;
   final bool showHelp;
@@ -361,6 +386,8 @@ Options:
   --channel ch1|ch2|both Channels to write (default: both)
   --output PATH          CSV destination, or - for stdout (default: mooshimeter.csv)
   --rate HZ              Meter sample rate: 125, 250, 500, 1000, 2000, 4000, 8000
+  --voltage-range V      CH2 range: 60 or 600 (default: 60); readings above
+                         120% of the range are written as OL
   --scan-timeout SEC     Scan timeout in seconds (default: 10)
   --duration SEC         Stop automatically after this duration
   --help, -h             Show this help
@@ -370,6 +397,7 @@ Options:
     var channels = _ChannelSelection.both;
     var output = 'mooshimeter.csv';
     var rate = 125;
+    var voltageRange = 60;
     var timeout = const Duration(seconds: 10);
     Duration? duration;
     var help = false;
@@ -397,6 +425,8 @@ Options:
           output = value;
         case '--rate':
           rate = int.parse(value);
+        case '--voltage-range':
+          voltageRange = int.parse(value);
         case '--scan-timeout':
           timeout = Duration(seconds: int.parse(value));
         case '--duration':
@@ -408,11 +438,15 @@ Options:
     if (!const {125, 250, 500, 1000, 2000, 4000, 8000}.contains(rate)) {
       throw FormatException('Unsupported --rate $rate.');
     }
+    if (voltageRange != 60 && voltageRange != 600) {
+      throw FormatException('--voltage-range must be 60 or 600.');
+    }
     return _LoggerOptions(
       deviceAddress: device,
       channels: channels,
       outputPath: output,
       sampleRate: rate,
+      voltageRange: voltageRange,
       scanTimeout: timeout,
       duration: duration,
       showHelp: help,

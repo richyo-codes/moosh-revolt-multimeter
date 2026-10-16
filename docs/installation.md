@@ -118,7 +118,11 @@ dart run tool/mooshimeter_log.dart --channel both --output readings.csv
 dart run tool/mooshimeter_log.dart --device AA:BB:CC:DD:EE:FF --channel ch2 --output -
 ```
 
-Use `--help` for sample rate, scan timeout, and duration options. The app's
+The logger sets CH1 to DC current (10 A) and CH2 to DC voltage, whatever
+mode the meter was left in. CH2 uses the 60 V range unless you pass
+`--voltage-range 600`; the meter does not auto-range while logging, so pick
+the range for the highest voltage you expect. Saturated readings are written
+as `OL`. Use `--help` for sample rate, scan timeout, and duration options. The app's
 overflow menu can copy a matching logger command for the visible channels,
 sample rate, and connected device.
 
