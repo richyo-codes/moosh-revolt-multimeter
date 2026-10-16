@@ -40,7 +40,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'MooshRevolt is an Android and Linux desktop app for the '
+                'MooshRevolt is an Android, Linux, and macOS app for the '
                 'Mooshimeter BLE multimeter. It provides live readings, '
                 'graphing, logging, and a practical interface for modern devices.',
               ),

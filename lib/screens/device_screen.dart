@@ -881,7 +881,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     if (!_continuityToneWanted) return;
     try {
       await _continuityTone.start(
-        linuxToneFile: () async {
+        toneFile: () async {
           _continuityTonePath ??= await _writeContinuityTone();
           return _continuityTonePath!;
         },

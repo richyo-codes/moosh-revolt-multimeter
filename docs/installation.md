@@ -49,12 +49,33 @@ cd android
 The APK is written to `android/app/build/outputs/apk/release/app-release.apk`.
 Tagged releases use the CI release keystore instead.
 
+## macOS
+
+MooshRevolt runs on macOS 12 or later, including macOS 27, using Core
+Bluetooth. No pairing is needed. On first launch, macOS asks for Bluetooth
+permission; allow it, or enable MooshRevolt later under
+System Settings > Privacy & Security > Bluetooth.
+
+Building from source requires Xcode and CocoaPods:
+
+```sh
+flutter pub get
+flutter run -d macos
+flutter build macos --release   # build/macos/Build/Products/Release/MooshRevolt.app
+```
+
+The app is sandboxed. Snapshots and CSV files are saved under
+`~/Library/Containers/ca.richyoung.mooshrevolt/Data/Documents/Mooshimeter`.
+The continuity tone is played with the built-in `afplay`. The standalone CSV
+logger described below uses BlueZ and is Linux-only.
+
 ## Mock development mode
 
 Launch directly into a simulated connected meter without Bluetooth hardware:
 
 ```sh
 flutter run -d linux --dart-define=MOOSHREVOLT_MOCK=true
+flutter run -d macos --dart-define=MOOSHREVOLT_MOCK=true
 flutter run -d <device> --dart-define=MOOSHREVOLT_MOCK=true
 ```
 

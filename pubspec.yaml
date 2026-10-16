@@ -1,5 +1,5 @@
 name: moosh_revolt
-description: "MooshRevolt: modern Android and Linux desktop client for the Mooshimeter BLE multimeter."
+description: "MooshRevolt: modern Android, Linux, and macOS client for the Mooshimeter BLE multimeter."
 
 publish_to: 'none'
 

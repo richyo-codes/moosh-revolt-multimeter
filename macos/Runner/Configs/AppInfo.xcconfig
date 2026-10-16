@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = mooshimeter_flutter
+PRODUCT_NAME = MooshRevolt
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.mooshim.mooshimeterFlutter
+PRODUCT_BUNDLE_IDENTIFIER = ca.richyoung.mooshrevolt
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.mooshim. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Richard Young. Licensed under the GNU GPL v3.0.

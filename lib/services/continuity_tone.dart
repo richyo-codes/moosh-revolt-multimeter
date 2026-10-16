@@ -5,18 +5,19 @@ import 'package:flutter/services.dart';
 
 /// Plays the steady audible indication used by continuity mode.
 ///
-/// Linux uses PulseAudio's `paplay` with a generated WAV file. Android owns
-/// the playback natively so it can keep a low-latency loop alive without a
-/// notification sound or a Dart-side timer.
+/// Linux uses PulseAudio's `paplay` and macOS uses the built-in `afplay`, both
+/// with a generated WAV file. Android owns the playback natively so it can
+/// keep a low-latency loop alive without a notification sound or a Dart-side
+/// timer.
 class ContinuityTone {
   static const _androidChannel = MethodChannel(
     'ca.richyoung.mooshrevolt/continuity_tone',
   );
 
-  Process? _linuxPlayer;
+  Process? _desktopPlayer;
   bool _androidPlaying = false;
 
-  Future<void> start({required Future<String> Function() linuxToneFile}) async {
+  Future<void> start({required Future<String> Function() toneFile}) async {
     if (Platform.isAndroid) {
       if (_androidPlaying) return;
       try {
@@ -30,18 +31,19 @@ class ContinuityTone {
       return;
     }
 
-    if (!Platform.isLinux || _linuxPlayer != null) return;
+    final playerCommand = _desktopPlayerCommand();
+    if (playerCommand == null || _desktopPlayer != null) return;
     try {
-      final toneFile = await linuxToneFile();
-      final player = await Process.start('paplay', [toneFile]);
-      _linuxPlayer = player;
+      final path = await toneFile();
+      final player = await Process.start(playerCommand, [path]);
+      _desktopPlayer = player;
       unawaited(
         player.exitCode.whenComplete(() {
-          if (identical(_linuxPlayer, player)) _linuxPlayer = null;
+          if (identical(_desktopPlayer, player)) _desktopPlayer = null;
         }),
       );
     } catch (_) {
-      // `paplay` may not be installed. Measurements are still usable.
+      // The player may not be installed. Measurements are still usable.
     }
   }
 
@@ -50,8 +52,14 @@ class ContinuityTone {
       _androidPlaying = false;
       unawaited(_androidChannel.invokeMethod<void>('stop').catchError((_) {}));
     }
-    final player = _linuxPlayer;
-    _linuxPlayer = null;
+    final player = _desktopPlayer;
+    _desktopPlayer = null;
     player?.kill();
+  }
+
+  static String? _desktopPlayerCommand() {
+    if (Platform.isLinux) return 'paplay';
+    if (Platform.isMacOS) return '/usr/bin/afplay';
+    return null;
   }
 }

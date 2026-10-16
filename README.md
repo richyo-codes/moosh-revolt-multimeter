@@ -1,6 +1,6 @@
 # MooshRevolt
 
-MooshRevolt is a modern, open-source Android and Linux desktop client for the
+MooshRevolt is a modern, open-source Android, Linux, and macOS desktop client for the
 Mooshimeter Bluetooth LE multimeter.
 
 <p>
@@ -22,7 +22,7 @@ configuration-tree BLE protocol. It is not affiliated with Mooshim Engineering.
 
 ## Get started
 
-See [Installation](docs/installation.md) for Linux bundles, Android APKs,
+See [Installation](docs/installation.md) for Linux bundles, Android APKs, macOS,
 building from source, and mock development mode.
 
 ## Tools and development
