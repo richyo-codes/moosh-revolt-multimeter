@@ -47,4 +47,26 @@ void main() {
     expect(range.format(-1e-12), '0.0000');
     expect(const ChartAxisRange(0, 50, 10).format(30), '30');
   });
+
+  test('thins long histories to a min/max envelope', () {
+    final points = [
+      for (var i = 0; i < 10000; i++) LinePoint(i / 10, i == 5000 ? 99 : 1),
+    ];
+    final thinned = decimateEnvelope(points, buckets: 100);
+    expect(thinned.length, lessThanOrEqualTo(200));
+    // The single spike survives thinning.
+    expect(thinned.map((p) => p.y), contains(99));
+    for (var i = 1; i < thinned.length; i++) {
+      expect(thinned[i].x, greaterThanOrEqualTo(thinned[i - 1].x));
+    }
+  });
+
+  test('keeps overload gaps when thinning', () {
+    final points = [
+      for (var i = 0; i < 1000; i++)
+        LinePoint(i.toDouble(), i < 500 ? 1 : double.nan),
+    ];
+    final thinned = decimateEnvelope(points, buckets: 10);
+    expect(thinned.where((p) => p.y.isNaN), isNotEmpty);
+  });
 }

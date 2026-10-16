@@ -42,13 +42,29 @@ class _DeviceScreenState extends State<DeviceScreen>
   bool _providerListenerAttached = false;
   Timer? _sampleDebounce;
   double? _graphStartTimestamp;
-  DisplayUnit _ch1DisplayUnit = DisplayUnit.auto;
-  DisplayUnit _ch2DisplayUnit = DisplayUnit.auto;
-  bool _showCh1 = true;
-  bool _showCh2 = true;
-  GraphStyle _graphStyle = GraphStyle.dualAxis;
+  // Screen preferences live in [SettingsProvider], so every change is saved
+  // and restored on the next start.
+  DisplayUnit get _ch1DisplayUnit => _settingsProvider.displayUnit(0);
+  set _ch1DisplayUnit(DisplayUnit unit) =>
+      _settingsProvider.setDisplayUnit(0, unit);
+  DisplayUnit get _ch2DisplayUnit => _settingsProvider.displayUnit(1);
+  set _ch2DisplayUnit(DisplayUnit unit) =>
+      _settingsProvider.setDisplayUnit(1, unit);
+  bool get _showCh1 => _settingsProvider.showChannel(0);
+  set _showCh1(bool visible) => _settingsProvider.setShowChannel(0, visible);
+  bool get _showCh2 => _settingsProvider.showChannel(1);
+  set _showCh2(bool visible) => _settingsProvider.setShowChannel(1, visible);
+  GraphStyle get _graphStyle =>
+      GraphStyle.values
+          .where((style) => style.name == _settingsProvider.graphStyle)
+          .firstOrNull ??
+      GraphStyle.dualAxis;
+  set _graphStyle(GraphStyle style) =>
+      _settingsProvider.graphStyle = style.name;
+  bool get _continuityGraph => _settingsProvider.continuityGraph;
+  set _continuityGraph(bool enabled) =>
+      _settingsProvider.continuityGraph = enabled;
   bool _continuityToneEnabled = false;
-  bool _continuityGraph = false;
   bool _ch1MinMaxTracking = false;
   bool _ch2MinMaxTracking = false;
   double? _ch1Minimum;
@@ -73,6 +89,12 @@ class _DeviceScreenState extends State<DeviceScreen>
       _settingsProvider = context.read<SettingsProvider>();
       _bleProvider.addListener(_onBleProviderChanged);
       _providerListenerAttached = true;
+      // Restore a saved continuity tone; it holds the 1 kΩ range.
+      final continuityChannel = _continuityChannel;
+      if (_settingsProvider.continuityTone && continuityChannel != null) {
+        _setContinuityToneEnabled(true);
+        unawaited(_bleProvider.setRange(continuityChannel, 0));
+      }
     }
     _devLog(
       'didChangeDependencies — provider=${_bleProvider.state} deviceId=${_bleProvider.deviceId}',
@@ -238,6 +260,14 @@ class _DeviceScreenState extends State<DeviceScreen>
                         value: 'sample-rate',
                         child: Text(
                           'Sample rate: ${_sampleRateLabel(provider)}',
+                        ),
+                      ),
+                    if (isConnected)
+                      PopupMenuItem(
+                        value: 'chart-window',
+                        child: Text(
+                          'Chart history: '
+                          '${formatChartWindow(settings.chartWindow)}',
                         ),
                       ),
                     if (isConnected)
@@ -837,6 +867,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       _showMessage('The shared input is in use by the other channel');
       return;
     }
+    _settingsProvider.setChannelMode(channel, mode);
     setState(() {
       // A fixed prefix chosen for the old quantity (for example mA) is
       // meaningless for the new one (mΩ), so fall back to auto-ranging.
@@ -964,10 +995,16 @@ class _DeviceScreenState extends State<DeviceScreen>
         _ch2Maximum = math.max(_ch2Maximum ?? ch2, ch2);
       }
       _pointCount++;
-      final maxPoints = _settingsProvider.graphMaxPoints;
-      if (_ch1Points.length > maxPoints) {
-        _ch1Points.removeAt(0);
-        _ch2Points.removeAt(0);
+      // Keep the configured time window; the chart thins long histories.
+      final cutoff =
+          elapsed - _settingsProvider.chartWindow.inMilliseconds / 1000;
+      var expired = 0;
+      while (expired < _ch1Points.length && _ch1Points[expired].x < cutoff) {
+        expired++;
+      }
+      if (expired > 0) {
+        _ch1Points.removeRange(0, expired);
+        _ch2Points.removeRange(0, expired);
       }
     });
   }
@@ -1015,6 +1052,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   /// Arms or releases the audio output together with the tone setting.
   void _setContinuityToneEnabled(bool enabled) {
     _continuityToneEnabled = enabled;
+    _settingsProvider.continuityTone = enabled;
     _continuityReadyAt = enabled
         ? DateTime.now().add(const Duration(milliseconds: 300))
         : null;
@@ -1357,6 +1395,9 @@ class _DeviceScreenState extends State<DeviceScreen>
       case 'sample-rate':
         unawaited(_showSampleRatePicker());
         break;
+      case 'chart-window':
+        unawaited(_showChartWindowPicker());
+        break;
       case 'clear-graph':
         _clearGraph();
         break;
@@ -1393,6 +1434,30 @@ class _DeviceScreenState extends State<DeviceScreen>
       ),
     );
     if (style != null && mounted) setState(() => _graphStyle = style);
+  }
+
+  Future<void> _showChartWindowPicker() async {
+    final current = _settingsProvider.chartWindow;
+    final window = await showDialog<Duration>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Chart history'),
+        children: SettingsProvider.chartWindows
+            .map(
+              (window) => ListTile(
+                leading: Icon(
+                  window == current
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(formatChartWindow(window)),
+                onTap: () => Navigator.pop(context, window),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (window != null && mounted) _settingsProvider.chartWindow = window;
   }
 
   Future<void> _showSampleRatePicker() async {

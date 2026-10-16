@@ -23,6 +23,14 @@ void main() async {
 
   // Initialize settings (loads remembered devices, autoconnect flag, etc.)
   await settingsProvider.init();
+  // Restore the saved measurement modes; they are sent to the meter when it
+  // connects.
+  for (final channel in const [0, 1]) {
+    await bleProvider.setInput(
+      channel,
+      settingsProvider.channelMode(channel).input,
+    );
+  }
 
   runApp(
     MultiProvider(

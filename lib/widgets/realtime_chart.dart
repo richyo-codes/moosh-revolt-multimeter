@@ -111,10 +111,14 @@ class _RealtimeChartState extends State<RealtimeChart> {
   }
 
   /// Overloaded samples (NaN) count as open in a continuity trace.
-  static List<LinePoint> _series(List<LinePoint> points, bool continuity) =>
-      continuity
-      ? [for (final p in points) LinePoint(p.x, hasContinuity(p.y) ? 1 : 0)]
-      : points;
+  static List<LinePoint> _series(
+    List<LinePoint> points,
+    bool continuity,
+  ) => decimateEnvelope(
+    continuity
+        ? [for (final p in points) LinePoint(p.x, hasContinuity(p.y) ? 1 : 0)]
+        : points,
+  );
 
   static (double, double)? _extent(List<LinePoint> points) {
     var min = double.infinity;
@@ -560,6 +564,47 @@ class ChartAxisRange {
     final rounded = value.abs() < step / 1000 ? 0.0 : value;
     return rounded.toStringAsFixed(decimals);
   }
+}
+
+/// Most spots a series is drawn with. Hours of history at 16 samples/s
+/// would otherwise mean tens of thousands of spots per frame.
+const maxChartBuckets = 600;
+
+/// Thins [points] to at most two per bucket of equal time, keeping each
+/// bucket's minimum and maximum in time order, so spikes and overloads stay
+/// visible however long the history is. A bucket with an overload (NaN)
+/// keeps the gap.
+List<LinePoint> decimateEnvelope(
+  List<LinePoint> points, {
+  int buckets = maxChartBuckets,
+}) {
+  if (points.length <= buckets * 2) return points;
+  final start = points.first.x;
+  final width = (points.last.x - start) / buckets;
+  if (width <= 0) return points;
+  final result = <LinePoint>[];
+  var i = 0;
+  for (var bucket = 0; bucket < buckets && i < points.length; bucket++) {
+    final end = bucket == buckets - 1
+        ? double.infinity
+        : start + width * (bucket + 1);
+    LinePoint? low;
+    LinePoint? high;
+    LinePoint? gap;
+    for (; i < points.length && points[i].x < end; i++) {
+      final point = points[i];
+      if (!point.y.isFinite) {
+        gap ??= point;
+        continue;
+      }
+      if (low == null || point.y < low.y) low = point;
+      if (high == null || point.y > high.y) high = point;
+    }
+    final kept = [?low, if (high != null && !identical(high, low)) high, ?gap]
+      ..sort((a, b) => a.x.compareTo(b.x));
+    result.addAll(kept);
+  }
+  return result;
 }
 
 /// A single data point on the chart.

@@ -53,13 +53,32 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              SwitchListTile(
-                title: const Text('Dark mode'),
-                subtitle: const Text(
-                  'Use a dark color scheme throughout the app',
+              ListTile(
+                title: const Text('Theme'),
+                subtitle: const Text('System follows your OS appearance'),
+                trailing: SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto),
+                      tooltip: 'System',
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode),
+                      tooltip: 'Light',
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode),
+                      tooltip: 'Dark',
+                    ),
+                  ],
+                  selected: {settings.themeMode},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      settings.themeMode = selection.single,
                 ),
-                value: settings.themeMode == ThemeMode.dark,
-                onChanged: (_) => settings.toggleTheme(),
               ),
               SwitchListTile(
                 title: const Text('Show values for floating probes'),
@@ -226,12 +245,17 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               ListTile(
-                title: const Text('Max graph points'),
-                subtitle: Text('${settings.graphMaxPoints}'),
-                trailing: PopupMenuButton<int>(
-                  onSelected: (points) => settings.graphMaxPoints = points,
-                  itemBuilder: (_) => [100, 300, 500, 1000, 3000]
-                      .map((p) => PopupMenuItem(value: p, child: Text('$p')))
+                title: const Text('Chart history'),
+                subtitle: Text(formatChartWindow(settings.chartWindow)),
+                trailing: PopupMenuButton<Duration>(
+                  onSelected: (window) => settings.chartWindow = window,
+                  itemBuilder: (_) => SettingsProvider.chartWindows
+                      .map(
+                        (w) => PopupMenuItem(
+                          value: w,
+                          child: Text(formatChartWindow(w)),
+                        ),
+                      )
                       .toList(),
                 ),
               ),

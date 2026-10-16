@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 
 /// Manages app-wide settings using [shared_preferences].
@@ -13,9 +14,21 @@ class SettingsProvider extends ChangeNotifier {
   bool _autoConnect = true;
   bool _skipUpgrade = false;
   int? _sampleRate;
-  int _graphMaxPoints = 300;
-  bool _darkMode = false;
+  Duration _chartWindow = const Duration(minutes: 1);
+  ThemeMode _themeMode = ThemeMode.system;
   bool _showFloatingReadings = false;
+
+  // --- Meter screen preferences, restored on the next start ---
+  final List<bool> _showChannel = [true, true];
+  final List<ChannelMode> _channelMode = [
+    ChannelMode.current,
+    ChannelMode.voltage,
+  ];
+  final List<DisplayUnit> _displayUnit = [DisplayUnit.auto, DisplayUnit.auto];
+  String? _graphStyle;
+  bool _continuityTone = false;
+  bool _continuityGraph = false;
+  double _readingsFraction = 0.4;
 
   // --- Remembered Devices ---
   List<RememberedDevice> _rememberedDevices = [];
@@ -28,9 +41,33 @@ class SettingsProvider extends ChangeNotifier {
   /// The preferred sample rate in Hz, or null to choose it from the
   /// measurement (125 Hz for DC, 4 kHz for AC).
   int? get sampleRate => _sampleRate;
-  int get graphMaxPoints => _graphMaxPoints;
+
+  /// How much history the live chart keeps.
+  Duration get chartWindow => _chartWindow;
   bool get showFloatingReadings => _showFloatingReadings;
-  ThemeMode get themeMode => _darkMode ? ThemeMode.dark : ThemeMode.light;
+  ThemeMode get themeMode => _themeMode;
+
+  bool showChannel(int channel) => _showChannel[channel];
+  ChannelMode channelMode(int channel) => _channelMode[channel];
+  DisplayUnit displayUnit(int channel) => _displayUnit[channel];
+
+  /// The graph style's name, or null for the default.
+  String? get graphStyle => _graphStyle;
+  bool get continuityTone => _continuityTone;
+  bool get continuityGraph => _continuityGraph;
+
+  /// Share of the meter screen given to the readings; the chart gets the
+  /// rest.
+  double get readingsFraction => _readingsFraction;
+
+  /// Chart history choices offered in the UI.
+  static const chartWindows = [
+    Duration(seconds: 10),
+    Duration(minutes: 1),
+    Duration(minutes: 5),
+    Duration(minutes: 15),
+    Duration(hours: 1),
+  ];
   List<RememberedDevice> get rememberedDevices =>
       List.unmodifiable(_rememberedDevices);
   int get rememberedDeviceCount => _rememberedDevices.length;
@@ -46,9 +83,47 @@ class SettingsProvider extends ChangeNotifier {
     // which would keep AC measurements from switching to 4 kHz.
     final storedRate = _prefs?.getInt('sample_rate') ?? 0;
     _sampleRate = storedRate <= 0 ? null : _normalizeSampleRate(storedRate);
-    _graphMaxPoints = _prefs?.getInt('graph_max_points') ?? 300;
-    _darkMode = _prefs?.getBool('dark_mode') ?? false;
+    _chartWindow = Duration(
+      seconds: _prefs?.getInt('chart_window_s') ?? _chartWindow.inSeconds,
+    );
+    _themeMode = _byName(
+      ThemeMode.values,
+      _prefs?.getString('theme_mode'),
+      // Before the System option existed, dark mode was a plain switch.
+      (_prefs?.getBool('dark_mode') ?? false)
+          ? ThemeMode.dark
+          : ThemeMode.system,
+    );
     _showFloatingReadings = _prefs?.getBool('show_floating_readings') ?? false;
+    for (final channel in const [0, 1]) {
+      final key = 'ch${channel + 1}';
+      _showChannel[channel] =
+          _prefs?.getBool('show_$key') ?? _showChannel[channel];
+      final mode = _byName(
+        ChannelMode.values,
+        _prefs?.getString('mode_$key'),
+        _channelMode[channel],
+      );
+      if (ChannelMode.forChannel(channel).contains(mode)) {
+        _channelMode[channel] = mode;
+      }
+      _displayUnit[channel] = _byName(
+        DisplayUnit.values,
+        _prefs?.getString('display_unit_$key'),
+        DisplayUnit.auto,
+      );
+    }
+    // Only one channel can use the shared input; keep CH1's choice.
+    if (_channelMode[0].usesSharedInput && _channelMode[1].usesSharedInput) {
+      _channelMode[1] = ChannelMode.voltage;
+    }
+    _graphStyle = _prefs?.getString('graph_style');
+    _continuityTone = _prefs?.getBool('continuity_tone') ?? false;
+    _continuityGraph = _prefs?.getBool('continuity_graph') ?? false;
+    _readingsFraction = (_prefs?.getDouble('readings_fraction') ?? 0.4).clamp(
+      minReadingsFraction,
+      maxReadingsFraction,
+    );
 
     // Load remembered devices
     final raw = _prefs?.getString('remembered_devices');
@@ -92,9 +167,9 @@ class SettingsProvider extends ChangeNotifier {
     return supported.firstWhere((rate) => rate >= value, orElse: () => 8000);
   }
 
-  set graphMaxPoints(int value) {
-    _graphMaxPoints = value;
-    _prefs?.setInt('graph_max_points', value);
+  set chartWindow(Duration value) {
+    _chartWindow = value;
+    _prefs?.setInt('chart_window_s', value.inSeconds);
     notifyListeners();
   }
 
@@ -104,11 +179,65 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleTheme() {
-    _darkMode = !_darkMode;
-    _prefs?.setBool('dark_mode', _darkMode);
+  set themeMode(ThemeMode value) {
+    _themeMode = value;
+    _prefs?.setString('theme_mode', value.name);
     notifyListeners();
   }
+
+  // --- Meter screen preferences ---
+
+  void setShowChannel(int channel, bool visible) {
+    _showChannel[channel] = visible;
+    _prefs?.setBool('show_ch${channel + 1}', visible);
+    notifyListeners();
+  }
+
+  void setChannelMode(int channel, ChannelMode mode) {
+    _channelMode[channel] = mode;
+    _prefs?.setString('mode_ch${channel + 1}', mode.name);
+    notifyListeners();
+  }
+
+  void setDisplayUnit(int channel, DisplayUnit unit) {
+    _displayUnit[channel] = unit;
+    _prefs?.setString('display_unit_ch${channel + 1}', unit.name);
+    notifyListeners();
+  }
+
+  set graphStyle(String? name) {
+    _graphStyle = name;
+    if (name == null) {
+      _prefs?.remove('graph_style');
+    } else {
+      _prefs?.setString('graph_style', name);
+    }
+    notifyListeners();
+  }
+
+  set continuityTone(bool value) {
+    _continuityTone = value;
+    _prefs?.setBool('continuity_tone', value);
+    notifyListeners();
+  }
+
+  set continuityGraph(bool value) {
+    _continuityGraph = value;
+    _prefs?.setBool('continuity_graph', value);
+    notifyListeners();
+  }
+
+  static const minReadingsFraction = 0.15;
+  static const maxReadingsFraction = 0.7;
+
+  set readingsFraction(double value) {
+    _readingsFraction = value.clamp(minReadingsFraction, maxReadingsFraction);
+    _prefs?.setDouble('readings_fraction', _readingsFraction);
+    notifyListeners();
+  }
+
+  static T _byName<T extends Enum>(List<T> values, String? name, T fallback) =>
+      values.where((value) => value.name == name).firstOrNull ?? fallback;
 
   // --- Remembered Device Helpers ---
 
@@ -202,4 +331,15 @@ class SettingsProvider extends ChangeNotifier {
       orElse: () => _rememberedDevices.first,
     );
   }
+}
+
+/// "10 s", "1 min", "1 h" for a chart history window.
+String formatChartWindow(Duration window) {
+  if (window.inHours >= 1 && window.inMinutes % 60 == 0) {
+    return '${window.inHours} h';
+  }
+  if (window.inMinutes >= 1 && window.inSeconds % 60 == 0) {
+    return '${window.inMinutes} min';
+  }
+  return '${window.inSeconds} s';
 }
