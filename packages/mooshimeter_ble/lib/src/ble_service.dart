@@ -459,8 +459,16 @@ class BleProvider extends ChangeNotifier {
   String get sdCardStatusLabel {
     final status = _sdLogStatus;
     if (status == null) return 'Status not checked';
-    if (status == 0) return 'Ready';
-    return 'Card unavailable (status $status)';
+    // LOG:STATUS codes as defined by the Mooshimeter firmware.
+    return switch (status) {
+      0 => 'Ready',
+      1 => 'No card inserted',
+      2 => 'Card could not be mounted (use FAT or FAT32)',
+      3 => 'Card is full',
+      4 => 'Write error on the card',
+      5 => 'End of log file',
+      _ => 'Card unavailable (status $status)',
+    };
   }
 
   /// Scan for Mooshimeter devices.
