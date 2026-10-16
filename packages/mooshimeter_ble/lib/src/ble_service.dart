@@ -681,6 +681,24 @@ class BleProvider extends ChangeNotifier {
     _scheduleReconnect();
   }
 
+  /// Scans briefly for the meter with [deviceId].
+  Future<BleDevice?> _rediscover(String deviceId) async {
+    try {
+      await UniversalBle.startScan();
+      return await UniversalBle.scanStream
+          .firstWhere((candidate) => candidate.deviceId == deviceId)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        await UniversalBle.stopScan();
+      } catch (_) {
+        // Scanning may already have stopped.
+      }
+    }
+  }
+
   /// Retries the last meter with backoff after an unexpected link loss.
   /// The measurement configuration is kept, so [connect] restores it.
   void _scheduleReconnect() {
@@ -700,7 +718,14 @@ class BleProvider extends ChangeNotifier {
       _reconnectTimer = null;
       if (!_reconnecting) return;
       _reconnectAttempt++;
-      final ok = await connect(device, sampleRate: _sampleRateSetting);
+      // The first retry reuses the known peripheral. After that, scan for
+      // it again: once the meter has restarted (battery swap, reboot), the
+      // platform cannot connect to the old handle until it is rediscovered.
+      final target = _reconnectAttempt > 1
+          ? await _rediscover(device.deviceId) ?? device
+          : device;
+      if (!_reconnecting) return;
+      final ok = await connect(target, sampleRate: _sampleRateSetting);
       if (ok) {
         _reconnecting = false;
         _reconnectAttempt = 0;
