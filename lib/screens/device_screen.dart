@@ -21,6 +21,7 @@ import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/continuity_tone.dart';
 import 'package:moosh_revolt/services/csv_recorder.dart';
+import 'package:moosh_revolt/screens/meter_guide_screen.dart';
 import 'package:moosh_revolt/screens/settings_screen.dart';
 import 'package:moosh_revolt/widgets/meter_jacks.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
@@ -254,6 +255,11 @@ class _DeviceScreenState extends State<DeviceScreen>
                 if (_recorder case final recorder?
                     when isConnected || recorder.recording)
                   _recordButton(),
+                IconButton(
+                  icon: const Icon(Icons.help_outline),
+                  tooltip: 'Meter guide',
+                  onPressed: _openGuide,
+                ),
                 IconButton(
                   // Distinct from the per-channel "tune" controls: this
                   // configures the meter itself (rate, SD card, device).
@@ -811,6 +817,54 @@ class _DeviceScreenState extends State<DeviceScreen>
     ac: ChannelMode.voltageAc,
   );
 
+  void _openGuide() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MeterGuideScreen(onSetUp: _applyGuideSetup),
+      ),
+    );
+  }
+
+  /// Configures the meter for a guide recipe. A channel leaving the shared
+  /// aux input goes first, and if a recipe needs the shared input on one
+  /// channel while the other holds it, the other returns to its own jack.
+  Future<void> _applyGuideSetup(GuideSetup setup) async {
+    final provider = _bleProvider;
+    final targets = <int, ChannelMode>{0: ?setup.ch1, 1: ?setup.ch2};
+    for (final channel in targets.keys.toList()) {
+      final other = 1 - channel;
+      if (targets[channel]!.usesSharedInput &&
+          !targets.containsKey(other) &&
+          _mode(other).usesSharedInput) {
+        targets[other] = other == 0 ? ChannelMode.current : ChannelMode.voltage;
+      }
+    }
+    final ordered = targets.entries.toList()
+      ..sort(
+        (a, b) => (a.value.usesSharedInput ? 1 : 0).compareTo(
+          b.value.usesSharedInput ? 1 : 0,
+        ),
+      );
+    for (final MapEntry(key: channel, value: mode) in ordered) {
+      await _setChannelMode(channel, mode, provider);
+      if (!mounted) return;
+      setState(() {
+        if (channel == 0) {
+          _showCh1 = true;
+        } else {
+          _showCh2 = true;
+        }
+      });
+    }
+    if (setup.math case final math?) _settingsProvider.mathFunction = math;
+    final summary = [
+      for (final MapEntry(key: channel, value: mode) in ordered)
+        'CH${channel + 1} ${mode.label}',
+      if (setup.math case final math?) 'Math ${math.label}',
+    ].join(', ');
+    _showMessage('Set up: $summary');
+  }
+
   /// The jack diagram for [channel]: its own jack in its colour, the other
   /// channel's jack faintly, and where each probe goes.
   Widget _probeGuide(int channel) {
@@ -1016,7 +1070,17 @@ class _DeviceScreenState extends State<DeviceScreen>
             ],
           ),
         ),
-        section('Connect your probes', [_probeGuide(channel)]),
+        section('Connect your probes', [
+          _probeGuide(channel),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openGuide,
+              icon: const Icon(Icons.help_outline, size: 18),
+              label: const Text('How do I connect? Open the meter guide'),
+            ),
+          ),
+        ]),
         section('Measure', [
           LayoutBuilder(
             builder: (context, constraints) {

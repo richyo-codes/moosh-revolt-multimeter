@@ -16,12 +16,17 @@ class MeterJacks extends StatelessWidget {
     this.active,
     this.dimmed,
     this.showLabels = true,
+    this.fills,
   });
 
   final double size;
   final JackUse? active;
   final JackUse? dimmed;
   final bool showLabels;
+
+  /// Explicit colours per jack (for example the guide's overview); these
+  /// take precedence over [active] and [dimmed].
+  final Map<String, Color>? fills;
 
   static const _positions = {
     'V': Alignment(0, -1),
@@ -52,12 +57,16 @@ class MeterJacks extends StatelessWidget {
                   label,
                   jack,
                   colors,
-                  fill: switch (label) {
-                    _ when label == active?.jack => active!.color,
-                    _ when label == dimmed?.jack => dimmed!.color.withAlpha(90),
-                    'C' when inUse => colors.onSurface,
-                    _ => null,
-                  },
+                  fill:
+                      fills?[label] ??
+                      switch (label) {
+                        _ when label == active?.jack => active!.color,
+                        _ when label == dimmed?.jack => dimmed!.color.withAlpha(
+                          90,
+                        ),
+                        'C' when inUse => colors.onSurface,
+                        _ => null,
+                      },
                 ),
               ),
           ],

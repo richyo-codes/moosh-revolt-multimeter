@@ -26,6 +26,9 @@ All notable changes to this project are documented here.
 - A Fahrenheit option for temperature.
 - A shorted-diode tone in diode mode.
 - Min/avg/max tracking with a reset.
+- A meter guide with the jack layout, live ranges, recipes that set the
+  meter up, safety notes, and links to the official documents.
+- Reading cards and channel settings name the jacks the probes go into.
 - Resizable readings/chart split, chart time axis, chart history window
   (10 s – 1 h), and a continuity graph.
 - Saved preferences for channel visibility, modes, units, graph style,

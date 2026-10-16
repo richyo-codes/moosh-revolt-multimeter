@@ -80,6 +80,21 @@ void main() {
     );
   });
 
+  testWidgets('capture meter guide screenshot', (tester) async {
+    await _captureScenario(
+      tester,
+      GlobalKey(),
+      await _ensureOutputDirectory(),
+      name: 'meter-guide-light',
+      size: const Size(1280, 800),
+      brightness: Brightness.light,
+      act: (tester) async {
+        await tester.tap(find.byTooltip('Meter guide'));
+        await tester.pumpAndSettle();
+      },
+    );
+  });
+
   testWidgets('capture waveform screenshot', (tester) async {
     await _captureScenario(
       tester,

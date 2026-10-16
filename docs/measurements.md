@@ -20,6 +20,13 @@ goes into C. To measure a battery, put the red probe in **V** and read
 **CH2**. The aux input (Ω) also measures voltage, but only up to 1.2 V and
 not through the V jack, so a battery on V does not show there.
 
+The **Meter guide** (the **?** button in the toolbar, or "How do I connect?"
+in a channel's settings) shows the jacks with the ranges your meter reports,
+step-by-step recipes for voltage, current, resistance, diodes, power and a
+thermocouple, safety notes, and links to the official cheat sheet and
+manual. Each recipe's **Set up the meter** button configures the channels
+for it.
+
 Each reading card names its measurement first, then its channel and jack
 ("Voltage DC · CH2 · V jack + C"), with a small jack diagram. The channel
 configuration opens with **Connect your probes**, which lights the jacks to

@@ -201,6 +201,29 @@ void main() {
     expect(find.textContaining('measured on CH2'), findsWidgets);
   });
 
+  testWidgets('guide setup hands the shared input to the right channel', (
+    tester,
+  ) async {
+    final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
+    await provider.setInput(1, ChannelMode.resistance.input);
+    await pumpDevice(tester, size: const Size(1280, 800), provider: provider);
+
+    await tester.tap(find.byTooltip('Meter guide'));
+    await tester.pumpAndSettle();
+    final setUp = find.byKey(
+      const ValueKey('guide-set-up-Resistance and continuity'),
+    );
+    await tester.ensureVisible(setUp);
+    await tester.pumpAndSettle();
+    await tester.tap(setUp);
+    await tester.pumpAndSettle();
+
+    // CH2 gave up the shared Ω input so CH1 could take it.
+    expect(provider.input(0), ChannelMode.resistance.input);
+    expect(provider.input(1), ChannelMode.voltage.input);
+    expect(find.textContaining('Set up:'), findsOneWidget);
+  });
+
   testWidgets('docks channel configuration beside the meter on desktop', (
     tester,
   ) async {

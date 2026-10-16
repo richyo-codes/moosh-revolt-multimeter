@@ -38,6 +38,7 @@ in these scenarios, which also illustrate the README:
 | `meter-desktop-light.png` | 1280 × 800 | Desktop with the real-power math channel |
 | `meter-desktop-dark-config.png` | 1280 × 800 | Dark theme, docked CH1 configuration |
 | `waveform-desktop-dark.png` | 1280 × 800 | Waveform view of a 50 Hz mains capture |
+| `meter-guide-light.png` | 1280 × 800 | Meter guide: jacks, ranges and recipes |
 
 ```sh
 flutter test integration_test/marketing_screenshots_test.dart -d linux

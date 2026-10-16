@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:moosh_revolt/screens/meter_guide_screen.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_ble/universal_ble.dart';
@@ -227,6 +228,13 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Meter guide',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const MeterGuideScreen()),
+            ),
+          ),
           IconButton(
             icon: Icon(_isScanning ? Icons.stop : Icons.refresh),
             onPressed: _isScanning ? _stopScan : _startScan,

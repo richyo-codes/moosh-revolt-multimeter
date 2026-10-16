@@ -34,6 +34,8 @@ configuration-tree BLE protocol. It is not affiliated with Mooshim Engineering.
 - Automatic reconnection when the Bluetooth link drops
 - A resizable layout that remembers your channels, modes, units, and theme
   (System, Light, or Dark)
+- A built-in meter guide: which jack does what, step-by-step recipes that
+  set the meter up, and safety notes
 - Meter settings, battery state, and SD-card logger status
 - A deterministic mock meter for UI development and screenshots
 

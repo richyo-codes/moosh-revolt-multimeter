@@ -21,6 +21,7 @@ dependencies:
   mooshimeter_ble:
     path: packages/mooshimeter_ble
   path_provider: ^2.1.5
+  url_launcher: ^6.3.3
 
 
 dev_dependencies:

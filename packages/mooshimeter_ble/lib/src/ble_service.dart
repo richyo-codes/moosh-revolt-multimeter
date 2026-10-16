@@ -419,6 +419,13 @@ class BleProvider extends ChangeNotifier {
         : MeterRanges.forInput(tree, channel, _inputs[channel]);
   }
 
+  /// Full-scale values the connected meter offers for [input] on
+  /// [channel], or null before the configuration tree is known.
+  List<double>? rangesFor(int channel, MeterInput input) {
+    final tree = _tree;
+    return tree == null ? null : MeterRanges.forInput(tree, channel, input);
+  }
+
   bool autoRange(int channel) => _autoRange[channel];
   int rangeIndex(int channel) => _rangeIndex[channel];
 
