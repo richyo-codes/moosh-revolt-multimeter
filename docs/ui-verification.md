@@ -28,8 +28,16 @@ release or issue.
 
 ## Visual screenshot report
 
-The integration test captures a deterministic alternator/under-hood scenario
-in phone-sized portrait (390 × 844) and landscape (844 × 390) layouts:
+The integration test renders the real meter screen with simulated readings
+in these scenarios, which also illustrate the README:
+
+| File | Viewport | Shows |
+| --- | --- | --- |
+| `alternator-check-mobile-light.png` | 390 × 844 | Phone portrait, alternator check |
+| `alternator-check-landscape-light.png` | 844 × 390 | Compact landscape cards |
+| `meter-desktop-light.png` | 1280 × 800 | Desktop with the real-power math channel |
+| `meter-desktop-dark-config.png` | 1280 × 800 | Dark theme, docked CH1 configuration |
+| `waveform-desktop-dark.png` | 1280 × 800 | Waveform view of a 50 Hz mains capture |
 
 ```sh
 flutter test integration_test/marketing_screenshots_test.dart -d linux
@@ -41,6 +49,16 @@ the output directory when collecting a release report:
 ```sh
 flutter test integration_test/marketing_screenshots_test.dart -d linux \
   --dart-define=MARKETING_SCREENSHOT_DIR=build/ui-report
+```
+
+On macOS the test runs inside the sandboxed app, so point the output at the
+app container and copy the files from there:
+
+```sh
+OUT=~/Library/Containers/ca.richyoung.mooshrevolt/Data/tmp/shots
+flutter test integration_test/marketing_screenshots_test.dart -d macos \
+  --dart-define=MARKETING_SCREENSHOT_DIR=$OUT
+cp "$OUT"/*.png docs/images/
 ```
 
 Review all generated PNGs before publishing screenshots or making broad visual

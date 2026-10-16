@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -7,12 +8,18 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
+import 'package:moosh_revolt/models/math_channel.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/screens/device_screen.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 const _deviceId = 'DE:MO:00:00:00:01';
+
+/// A fixed afternoon start, so the chart's clock axis reads realistically.
+final _sessionStart =
+    DateTime(2026, 10, 16, 14, 30).millisecondsSinceEpoch / 1000;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +47,54 @@ void main() {
       brightness: Brightness.light,
     );
   });
+
+  testWidgets('capture desktop screenshot with the power math channel', (
+    tester,
+  ) async {
+    await _captureScenario(
+      tester,
+      GlobalKey(),
+      await _ensureOutputDirectory(),
+      name: 'meter-desktop-light',
+      size: const Size(1280, 800),
+      brightness: Brightness.light,
+      setUp: (settings, provider) =>
+          settings.mathFunction = MathFunction.realPower,
+    );
+  });
+
+  testWidgets('capture desktop dark screenshot with channel configuration', (
+    tester,
+  ) async {
+    await _captureScenario(
+      tester,
+      GlobalKey(),
+      await _ensureOutputDirectory(),
+      name: 'meter-desktop-dark-config',
+      size: const Size(1280, 800),
+      brightness: Brightness.dark,
+      act: (tester) async {
+        await tester.tap(find.byTooltip('Configure CH1 · Current DC'));
+        await tester.pumpAndSettle();
+      },
+    );
+  });
+
+  testWidgets('capture waveform screenshot', (tester) async {
+    await _captureScenario(
+      tester,
+      GlobalKey(),
+      await _ensureOutputDirectory(),
+      name: 'waveform-desktop-dark',
+      size: const Size(1280, 800),
+      brightness: Brightness.dark,
+      setUp: (settings, provider) async {
+        await provider.setInput(0, ChannelMode.currentAc.input);
+        await provider.setInput(1, ChannelMode.voltageAc.input);
+        provider.showWaveform = true;
+      },
+    );
+  });
 }
 
 Future<Directory> _ensureOutputDirectory() async {
@@ -55,6 +110,8 @@ Future<void> _captureScenario(
   required String name,
   required Size size,
   required Brightness brightness,
+  FutureOr<void> Function(SettingsProvider, _MarketingBleProvider)? setUp,
+  Future<void> Function(WidgetTester)? act,
 }) async {
   final view = tester.view;
   final previousSize = view.physicalSize;
@@ -70,6 +127,7 @@ Future<void> _captureScenario(
 
   final provider = _MarketingBleProvider();
   final settings = SettingsProvider();
+  await setUp?.call(settings, provider);
   await tester.pumpWidget(
     RepaintBoundary(
       key: boundaryKey,
@@ -107,11 +165,12 @@ Future<void> _captureScenario(
           14.24 +
           0.055 * math.sin(time * 0.75 + 0.8) +
           0.018 * math.sin(time * 4.6),
-      timestamp: time,
+      timestamp: _sessionStart + time,
     );
     await tester.pump(const Duration(milliseconds: 35));
   }
   await tester.pumpAndSettle(const Duration(milliseconds: 300));
+  await act?.call(tester);
   await _capture(tester, boundaryKey, output, name);
 }
 
@@ -171,16 +230,48 @@ class _MarketingBleProvider extends BleProvider {
   List<double> ranges(int channel) =>
       channel == 0 ? const [10] : const [60, 600];
 
+  bool showWaveform = false;
+
+  @override
+  bool get waveform => showWaveform;
+
+  /// A 50 Hz mains capture: 256 samples at 4 kHz, voltage leading current.
+  @override
+  WaveformCapture? get latestWaveform {
+    if (!showWaveform) return null;
+    List<double> wave(double peak, double phase) => [
+      for (var i = 0; i < 256; i++)
+        peak * math.sin(2 * math.pi * 50 * i / 4000 + phase) +
+            peak * 0.05 * math.sin(2 * math.pi * 150 * i / 4000 + phase),
+    ];
+    return WaveformCapture(
+      ch1: wave(2.3, -0.5),
+      ch2: wave(325, 0),
+      samplePeriod: 1 / 4000,
+    );
+  }
+
+  @override
+  int get sampleRateHz => showWaveform ? 4000 : 125;
+
   void publish({
     required double current,
     required double voltage,
     required double timestamp,
   }) {
-    _reading = DeviceReadings(
-      ch1Value: current,
-      ch2Value: voltage,
-      timestamp: timestamp,
-    );
+    _reading = showWaveform
+        // AC RMS of the simulated mains capture.
+        ? DeviceReadings(
+            ch1Value: 1.63 + current * 0.002,
+            ch2Value: 229.8 + voltage * 0.01,
+            timestamp: timestamp,
+          )
+        : DeviceReadings(
+            ch1Value: current,
+            ch2Value: voltage,
+            timestamp: timestamp,
+            realPower: current * voltage * 0.98,
+          );
     notifyListeners();
   }
 }

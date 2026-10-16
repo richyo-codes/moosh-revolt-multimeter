@@ -18,6 +18,14 @@ All notable changes to this project are documented here.
   generated for every platform from one SVG.
 - A drag-to-install macOS disk image (`tools/build_dmg.sh`), attached to
   tagged releases and optionally signed and notarized.
+- A math channel: real power (from the meter's REAL_PWR), apparent power,
+  power factor, and a type-K thermocouple.
+- A waveform view from the meter's raw sample buffers.
+- Continuous CSV recording of every reading, with mode and unit per row.
+- Automatic reconnection with backoff, including after the meter restarts.
+- A Fahrenheit option for temperature.
+- A shorted-diode tone in diode mode.
+- Min/avg/max tracking with a reset.
 - Resizable readings/chart split, chart time axis, chart history window
   (10 s – 1 h), and a continuity graph.
 - Saved preferences for channel visibility, modes, units, graph style,
@@ -32,6 +40,9 @@ All notable changes to this project are documented here.
 - The overflow menu is grouped. Maximize chart replaces the static Graph
   View.
 - Snapshots and screenshots are saved to `Downloads/MooshRevolt` on desktop.
+- Compact reading cards keep their secondary controls in one 40 px menu, and
+  the scan screen shows a single status line with theme colors.
+- The meter's SD-card status codes are shown by name.
 
 ### Fixed
 
@@ -42,6 +53,8 @@ All notable changes to this project are documented here.
   negative, and started late.
 - Charts wobbled and rescaled at sample rates above 125 Hz.
 - A hidden channel stayed in the chart and could not be shown again.
+- The Linux CSV logger configured the meter with hard-coded indices and never
+  selected current on CH1.
 
 ### Earlier
 

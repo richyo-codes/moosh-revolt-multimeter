@@ -23,6 +23,8 @@ MooshRevolt is an independent, open-source companion for Mooshimeter V.1:
 - Live dual-channel voltage and current measurements
 - Graphing with independent channel visibility and display units
 - Continuity mode with an audible tone on Android, Linux, and macOS
+- Power, power factor, and thermocouple math, and a waveform view
+- Continuous CSV recording and a Prometheus exporter
 - Recording, snapshots, screenshots, and CSV logging
 - A pure-Dart Linux/BlueZ CLI for unattended data capture
 

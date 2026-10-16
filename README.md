@@ -4,8 +4,14 @@ MooshRevolt is a modern, open-source Android, Linux, and macOS desktop client fo
 Mooshimeter Bluetooth LE multimeter.
 
 <p>
-  <img src="docs/images/alternator-check-mobile-light.png" alt="MooshRevolt in portrait with simulated alternator readings" width="300">
-  <img src="docs/images/alternator-check-landscape-light.png" alt="MooshRevolt in landscape with simulated alternator readings" width="650">
+  <img src="docs/images/meter-desktop-light.png" alt="MooshRevolt on the desktop with current, voltage and a real-power math channel beside a live chart" width="960">
+</p>
+<p>
+  <img src="docs/images/alternator-check-mobile-light.png" alt="MooshRevolt in portrait with simulated alternator readings" width="260">
+  <img src="docs/images/meter-desktop-dark-config.png" alt="Dark theme with the CH1 configuration panel docked beside the live chart" width="560">
+</p>
+<p>
+  <img src="docs/images/waveform-desktop-dark.png" alt="Waveform view showing a 50 Hz mains capture of current and voltage" width="560">
 </p>
 
 It is an independent community project for Mooshimeter V.1, built around its
@@ -14,15 +20,20 @@ configuration-tree BLE protocol. It is not affiliated with Mooshim Engineering.
 ## Features
 
 - Live CH1 and CH2 readings: current, voltage (DC/AC), resistance, diode drop,
-  auxiliary voltage, and internal temperature
+  auxiliary voltage, and internal temperature (°C or °F)
 - Bench-meter behavior: auto-ranging over the meter's own ranges, overload
   (OL) display, a fixed decimal point, and a per-channel zero
+- A math channel: real power, apparent power, power factor, and a type-K
+  thermocouple
 - Dual-axis, shared-axis, and split live charts with a time axis and a
-  history window of 10 s to 1 h
-- Continuity tone and continuity graph
+  history window of 10 s to 1 h, plus a waveform (oscilloscope) view
+- Continuity and shorted-diode tones, and a continuity graph
+- Continuous CSV recording of every reading, CSV chart exports, and
+  screenshots
+- A Prometheus exporter and a Linux CSV logger
+- Automatic reconnection when the Bluetooth link drops
 - A resizable layout that remembers your channels, modes, units, and theme
   (System, Light, or Dark)
-- CSV snapshots, screenshots, a Prometheus exporter, and a Linux CSV logger
 - Meter settings, battery state, and SD-card logger status
 - A deterministic mock meter for UI development and screenshots
 
@@ -30,7 +41,8 @@ configuration-tree BLE protocol. It is not affiliated with Mooshim Engineering.
 
 See [Installation](docs/installation.md) for Linux bundles, Android APKs, the macOS disk image,
 building from source, and mock development mode. [Measurements](docs/measurements.md)
-explains the modes, ranges, overload, zero, continuity, and diode drop.
+explains the modes, ranges, overload, zero, continuity, diode drop, the math
+channel, the waveform view, and recording.
 
 ## Tools and development
 

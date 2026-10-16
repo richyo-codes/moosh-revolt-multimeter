@@ -797,8 +797,8 @@ class _DeviceScreenState extends State<DeviceScreen>
       hint: 'Shared input, forward voltage up to 1.2 V',
       dc: ChannelMode.diode,
     ),
-    const _Quantity(
-      symbol: '°',
+    _Quantity(
+      symbol: DisplayPreferences.temperature.symbol,
       label: 'Temperature',
       hint: 'Temperature inside the meter',
       dc: ChannelMode.internalTemperature,
