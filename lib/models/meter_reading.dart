@@ -1,30 +1,6 @@
-/// Represents a single voltage/current reading from a Mooshimeter channel.
-class MeterReading {
-  final double timestamp;
-  final double value;
-  final String units;
-  final int digits;
-  final double max;
+import 'dart:math' as math;
 
-  MeterReading({
-    required this.timestamp,
-    required this.value,
-    required this.units,
-    required this.digits,
-    required this.max,
-  });
-
-  /// Format the reading for display with appropriate SI prefix.
-  String get formatted {
-    if (max == 0) return units;
-    final scale = SiScale.forValue(value);
-    final adjusted = value * scale.multiplier;
-    final sign = value >= 0 ? ' ' : '';
-    return '$sign${adjusted.toStringAsFixed(digits - 1)}${scale.prefix}$units';
-  }
-
-  bool get isOutOfRange => value.abs() > 1.2 * max;
-}
+import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 
 /// Resistance below which a probe pair counts as continuous, matching the
 /// beep threshold of typical bench meters (Fluke uses 25–70 Ω).
@@ -34,21 +10,72 @@ const continuityThresholdOhms = 50.0;
 ///
 /// Shorted probes read slightly negative (about −1 Ω on the 1 kΩ range)
 /// because the meter's zero offset exceeds the lead resistance, so the test
-/// is on magnitude. Readings far below zero are front-end saturation (the
-/// mirror of the ~1266 Ω open-circuit limit), not a short, and stay silent.
+/// is on magnitude.
 bool hasContinuity(double ohms) =>
     ohms.isFinite && ohms.abs() < continuityThresholdOhms;
 
-/// Channel type for Mooshimeter readings.
-enum Channel {
-  ch1('Ch1', 'A', 6, 10), // Current input
-  ch2('Ch2', 'V', 6, 600); // Voltage input
+/// What a channel measures, mapped onto the meter's named inputs.
+enum ChannelMode {
+  current('Current DC', MeterInput(mapping: 'CURRENT')),
+  currentAc('Current AC', MeterInput(mapping: 'CURRENT', analysis: 'RMS')),
+  voltage('Voltage DC', MeterInput(mapping: 'VOLTAGE')),
+  voltageAc('Voltage AC', MeterInput(mapping: 'VOLTAGE', analysis: 'RMS')),
+  internalTemperature('Internal Temperature', MeterInput(mapping: 'TEMP')),
+  auxiliaryVoltageDc(
+    'Auxiliary Voltage DC',
+    MeterInput(mapping: 'SHARED', shared: 'AUX_V'),
+  ),
+  auxiliaryVoltageAc(
+    'Auxiliary Voltage AC',
+    MeterInput(mapping: 'SHARED', shared: 'AUX_V', analysis: 'RMS'),
+  ),
+  resistance('Resistance', MeterInput(mapping: 'SHARED', shared: 'RESISTANCE')),
+  diode('Diode Drop', MeterInput(mapping: 'SHARED', shared: 'DIODE'));
 
-  const Channel(this.label, this.units, this.digits, this.max);
+  const ChannelMode(this.label, this.input);
+
   final String label;
-  final String units;
-  final int digits;
-  final double max;
+  final MeterInput input;
+
+  /// Modes each channel offers, as in the original Mooshimeter app. CH1's
+  /// dedicated input is the current shunt, CH2's is the voltage divider; the
+  /// shared auxiliary modes are available on either, one channel at a time.
+  static List<ChannelMode> forChannel(int channel) => [
+    if (channel == 0) ...[current, currentAc] else ...[voltage, voltageAc],
+    internalTemperature,
+    auxiliaryVoltageDc,
+    auxiliaryVoltageAc,
+    resistance,
+    diode,
+  ];
+
+  /// The mode matching what the meter reports for [channel].
+  static ChannelMode fromInput(int channel, MeterInput input) =>
+      forChannel(channel).firstWhere(
+        (mode) => mode.input == input,
+        orElse: () => channel == 0 ? current : voltage,
+      );
+
+  bool get usesSharedInput => input.usesShared;
+
+  /// The unit shown to the user. The meter reports temperature in kelvin.
+  String get units => switch (this) {
+    resistance => 'Ω',
+    internalTemperature => '°C',
+    current || currentAc => 'A',
+    _ => 'V',
+  };
+
+  /// Converts a value in the meter's native unit to [units].
+  double toDisplay(double native) =>
+      this == internalTemperature ? native - 273.15 : native;
+
+  /// Whether a reading in [units] is invalid although the input is not
+  /// saturated. A resistance well below zero means an external voltage is
+  /// driving the probes (the meter sees about −60 V on CH2 at the same
+  /// moments), so it is not a resistance.
+  bool isImplausible(double value, double fullScale) =>
+      this == resistance && value < -0.05 * fullScale;
 }
 
 class SiScale {
@@ -69,6 +96,27 @@ class SiScale {
     if (magnitude >= 1e-6) return const SiScale(1e6, 'μ');
     if (magnitude >= 1e-9) return const SiScale(1e9, 'n');
     return const SiScale(1e12, 'p');
+  }
+
+  /// The prefix a bench meter uses for a range of [fullScale]: the largest
+  /// that keeps 1–3 integer digits, so "10 kΩ" reads in kΩ and "100 mV" in
+  /// mV.
+  factory SiScale.forRange(double fullScale) {
+    // A "1000" range reads up to 1199.99, so it stays in the base unit;
+    // the prefix steps up only past three integer digits.
+    final exponent = (math.log(fullScale.abs()) / math.ln10 - 1e-9).floor();
+    final group = (exponent / 3).floor().clamp(-4, 3);
+    const prefixes = {
+      -4: 'p',
+      -3: 'n',
+      -2: 'μ',
+      -1: 'm',
+      0: '',
+      1: 'k',
+      2: 'M',
+      3: 'G',
+    };
+    return SiScale(math.pow(10, -3 * group).toDouble(), prefixes[group]!);
   }
 }
 
@@ -103,76 +151,56 @@ enum DisplayUnit {
       : SiScale(multiplier!, prefix);
 }
 
-/// Channel mode (input type) for Mooshimeter.
-/// The hardwareIndex maps to the Mooshimeter BLE protocol values:
-/// 0=Voltage, 1=Current, 2=Resistance, 3=Diode, 4=Frequency, 5=Period, 6=TempC, 7=TempF
-enum ChannelMode {
-  auto('Auto', -1),
-  voltage('Voltage DC', 0),
-  voltageAc('Voltage AC', 1),
-  current('Current DC', 0),
-  currentAc('Current AC', 1),
-  internalTemperature('Internal Temperature', 2),
-  resistance('Resistance', 2),
-  diode('Diode Drop', 6),
-  frequency('Frequency', 4),
-  period('Period', 5),
-  temperatureC('°C', 6),
-  temperatureF('°F', 7),
-  auxiliaryVoltageDc('Auxiliary Voltage DC', 3),
-  auxiliaryVoltageAc('Auxiliary Voltage AC', 4);
-
-  const ChannelMode(this.label, this.hardwareIndex);
-  final String label;
-  final int hardwareIndex;
-
-  /// The base unit the meter reports for this mode. The firmware returns
-  /// resistance in ohms and diode drop in volts, independent of the input.
-  String unitsFor(int channel) => switch (this) {
-    resistance => 'Ω',
-    internalTemperature || temperatureC => '°C',
-    temperatureF => '°F',
-    frequency => 'Hz',
-    period => 's',
-    voltage ||
-    voltageAc ||
-    diode ||
-    auxiliaryVoltageDc ||
-    auxiliaryVoltageAc => 'V',
-    current || currentAc => 'A',
-    auto => channel == 0 ? 'A' : 'V',
-  };
-}
-
-/// A device that has been discovered and possibly connected.
-class MooshimeterDevice {
-  final String id;
-  final String name;
-  final String address;
-  final int rssi;
-  final DateTime discoveredAt;
-  final bool isConnected;
-
-  MooshimeterDevice({
-    required this.id,
-    required this.name,
-    required this.address,
-    required this.rssi,
-    required this.discoveredAt,
-    this.isConnected = false,
+/// Formats readings the way a bench meter does: the prefix and decimal
+/// point are fixed by the range, so digits do not jump around while the
+/// value changes, and only as many digits are shown as the ADC resolves.
+class ReadingFormat {
+  const ReadingFormat({
+    required this.units,
+    required this.fullScale,
+    required this.significantDigits,
+    this.displayUnit = DisplayUnit.auto,
   });
 
-  String get rssiLabel {
-    if (rssi >= -50) return 'Excellent';
-    if (rssi >= -60) return 'Good';
-    if (rssi >= -70) return 'Fair';
-    return 'Weak';
+  final String units;
+
+  /// Full scale of the active range in [units], or null when unknown.
+  final double? fullScale;
+  final int significantDigits;
+  final DisplayUnit displayUnit;
+
+  /// Temperatures read in tenths at best; more digits would be noise.
+  static const _temperatureDecimals = 2;
+
+  SiScale scaleFor(double value) {
+    if (displayUnit != DisplayUnit.auto) return displayUnit.scaleFor(value);
+    if (units == '°C' || units == '°F') return const SiScale(1, '');
+    final range = fullScale;
+    return range == null || range <= 0
+        ? SiScale.forValue(value)
+        : SiScale.forRange(range);
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is MooshimeterDevice && id == other.id;
+  int decimalsFor(SiScale scale) {
+    if (units == '°C' || units == '°F') return _temperatureDecimals;
+    final range = fullScale;
+    if (range == null || range <= 0) return 3;
+    final scaledRange = range * scale.multiplier;
+    final integerDigits = scaledRange < 1
+        ? 1
+        : (math.log(scaledRange) / math.ln10).floor() + 1;
+    return (significantDigits - integerDigits).clamp(0, 6);
+  }
 
-  @override
-  int get hashCode => id.hashCode;
+  /// The number only, for example "14.240".
+  String number(double value) {
+    final scale = scaleFor(value);
+    return (value * scale.multiplier).toStringAsFixed(decimalsFor(scale));
+  }
+
+  /// The prefixed unit for [value], for example "kΩ".
+  String unit(double value) => '${scaleFor(value).prefix}$units';
+
+  /// The complete reading, for example "14.240 V".
+  String format(double value) => '${number(value)} ${unit(value)}';
 }

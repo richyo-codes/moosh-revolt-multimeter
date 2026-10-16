@@ -27,8 +27,13 @@ class ReadingsDisplay extends StatelessWidget {
   final bool ch2PossiblyFloating;
   final String ch1Units;
   final String ch2Units;
-  final double ch1Max;
-  final double ch2Max;
+
+  /// Full scale of each channel's active range, in its display unit.
+  final double? ch1Max;
+  final double? ch2Max;
+
+  /// Digits the meter resolves at its current sample rate and depth.
+  final int significantDigits;
   final bool compactLayout;
   final bool stackedLayout;
   final bool showFloatingValues;
@@ -65,8 +70,9 @@ class ReadingsDisplay extends StatelessWidget {
     this.ch2PossiblyFloating = false,
     this.ch1Units = 'A',
     this.ch2Units = 'V',
-    this.ch1Max = 10,
-    this.ch2Max = 600,
+    this.ch1Max,
+    this.ch2Max,
+    this.significantDigits = 5,
     this.compactLayout = false,
     this.stackedLayout = false,
     this.showFloatingValues = false,
@@ -76,94 +82,44 @@ class ReadingsDisplay extends StatelessWidget {
     this.onShowChannel,
   });
 
+  Widget _reading(int channel, {required bool compact}) {
+    final ch1 = channel == 0;
+    final mode = ch1 ? ch1Mode : ch2Mode;
+    return _ChannelReading(
+      label: 'CH${channel + 1} · ${mode.label}',
+      value: ch1 ? ch1Value : ch2Value,
+      units: ch1 ? ch1Units : ch2Units,
+      max: ch1 ? ch1Max : ch2Max,
+      digits: significantDigits,
+      isOutOfRange: ch1 ? ch1OutOfRange : ch2OutOfRange,
+      displayUnit: ch1 ? ch1DisplayUnit : ch2DisplayUnit,
+      onDisplayUnitChanged: ch1
+          ? onCh1DisplayUnitChanged
+          : onCh2DisplayUnitChanged,
+      minMaxTracking: ch1 ? ch1MinMaxTracking : ch2MinMaxTracking,
+      onMinMaxChanged: ch1 ? onCh1MinMaxChanged : onCh2MinMaxChanged,
+      onConfigure: ch1 ? onCh1Configure : onCh2Configure,
+      minimum: ch1 ? ch1Minimum : ch2Minimum,
+      maximum: ch1 ? ch1Maximum : ch2Maximum,
+      possiblyFloating: ch1 ? ch1PossiblyFloating : ch2PossiblyFloating,
+      hasFreshSample: hasFreshSample,
+      color: ch1 ? Colors.red : Colors.blue,
+      compact: compact,
+      showFloatingValues: showFloatingValues,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isCompact = false;
-    final ch1 = _ChannelReading(
-      label: 'CH1 · ${ch1Mode.label}',
-      value: ch1Value,
-      units: ch1Units,
-      max: ch1Max,
-      digits: Channel.ch1.digits,
-      isOutOfRange: ch1OutOfRange,
-      displayUnit: ch1DisplayUnit,
-      onDisplayUnitChanged: onCh1DisplayUnitChanged,
-      minMaxTracking: ch1MinMaxTracking,
-      onMinMaxChanged: onCh1MinMaxChanged,
-      onConfigure: onCh1Configure,
-      minimum: ch1Minimum,
-      maximum: ch1Maximum,
-      possiblyFloating: ch1PossiblyFloating,
-      hasFreshSample: hasFreshSample,
-      color: Colors.red,
-      compact: isCompact,
-      showFloatingValues: showFloatingValues,
-    );
-    final ch2 = _ChannelReading(
-      label: 'CH2 · ${ch2Mode.label}',
-      value: ch2Value,
-      units: ch2Units,
-      max: ch2Max,
-      digits: Channel.ch2.digits,
-      isOutOfRange: ch2OutOfRange,
-      displayUnit: ch2DisplayUnit,
-      onDisplayUnitChanged: onCh2DisplayUnitChanged,
-      minMaxTracking: ch2MinMaxTracking,
-      onMinMaxChanged: onCh2MinMaxChanged,
-      onConfigure: onCh2Configure,
-      minimum: ch2Minimum,
-      maximum: ch2Maximum,
-      possiblyFloating: ch2PossiblyFloating,
-      hasFreshSample: hasFreshSample,
-      color: Colors.blue,
-      compact: isCompact,
-      showFloatingValues: showFloatingValues,
-    );
+    final ch1 = _reading(0, compact: false);
+    final ch2 = _reading(1, compact: false);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Stacked cards only receive about half of this height.  Switch to the
         // compact header before their controls begin competing with the value.
         final compact = compactLayout || constraints.maxHeight < 360;
-        final compactCh1 = _ChannelReading(
-          label: 'CH1 · ${ch1Mode.label}',
-          value: ch1Value,
-          units: ch1Units,
-          max: ch1Max,
-          digits: Channel.ch1.digits,
-          isOutOfRange: ch1OutOfRange,
-          displayUnit: ch1DisplayUnit,
-          onDisplayUnitChanged: onCh1DisplayUnitChanged,
-          minMaxTracking: ch1MinMaxTracking,
-          onMinMaxChanged: onCh1MinMaxChanged,
-          onConfigure: onCh1Configure,
-          minimum: ch1Minimum,
-          maximum: ch1Maximum,
-          possiblyFloating: ch1PossiblyFloating,
-          hasFreshSample: hasFreshSample,
-          color: Colors.red,
-          compact: compact,
-          showFloatingValues: showFloatingValues,
-        );
-        final compactCh2 = _ChannelReading(
-          label: 'CH2 · ${ch2Mode.label}',
-          value: ch2Value,
-          units: ch2Units,
-          max: ch2Max,
-          digits: Channel.ch2.digits,
-          isOutOfRange: ch2OutOfRange,
-          displayUnit: ch2DisplayUnit,
-          onDisplayUnitChanged: onCh2DisplayUnitChanged,
-          minMaxTracking: ch2MinMaxTracking,
-          onMinMaxChanged: onCh2MinMaxChanged,
-          onConfigure: onCh2Configure,
-          minimum: ch2Minimum,
-          maximum: ch2Maximum,
-          possiblyFloating: ch2PossiblyFloating,
-          hasFreshSample: hasFreshSample,
-          color: Colors.blue,
-          compact: compact,
-          showFloatingValues: showFloatingValues,
-        );
+        final compactCh1 = _reading(0, compact: compact);
+        final compactCh2 = _reading(1, compact: compact);
         if (!showCh1 && !showCh2) {
           return Center(
             key: const ValueKey('channel-readings-none'),
@@ -250,7 +206,7 @@ class _ChannelReading extends StatelessWidget {
   final String label;
   final double value;
   final String units;
-  final double max;
+  final double? max;
   final int digits;
   final bool isOutOfRange;
   final Color color;
@@ -329,7 +285,7 @@ class _ChannelReading extends StatelessWidget {
                 ),
               if (compact)
                 PopupMenuButton<DisplayUnit>(
-                  tooltip: 'Display units: Auto chooses an SI prefix',
+                  tooltip: 'Display units: Auto follows the active range',
                   initialValue: displayUnit,
                   onSelected: onDisplayUnitChanged,
                   itemBuilder: (_) => DisplayUnit.choicesFor(units)
@@ -367,13 +323,18 @@ class _ChannelReading extends StatelessWidget {
             ],
           ),
           SizedBox(height: compact ? 4 : 8),
-          if (isOutOfRange)
-            Text(
-              'OUT OF RANGE',
-              style: TextStyle(
-                fontSize: compact ? 16 : 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.orange,
+          if (isOutOfRange && hasFreshSample)
+            Tooltip(
+              message: 'Overload: the input exceeds the selected range',
+              child: Text(
+                'OL',
+                key: ValueKey('reading-overload-$label'),
+                style: TextStyle(
+                  fontSize: compact ? 20 : 36,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                  color: Colors.orange.shade700,
+                ),
               ),
             )
           else
@@ -415,7 +376,7 @@ class _ChannelReading extends StatelessWidget {
                 runSpacing: 4,
                 children: [
                   PopupMenuButton<DisplayUnit>(
-                    tooltip: 'Display units: Auto chooses an SI prefix',
+                    tooltip: 'Display units: Auto follows the active range',
                     initialValue: displayUnit,
                     onSelected: onDisplayUnitChanged,
                     itemBuilder: (_) => DisplayUnit.choicesFor(units)
@@ -497,16 +458,17 @@ class _ChannelReading extends StatelessWidget {
     );
   }
 
-  String _formatValue() {
-    if (max == 0) return '0.000';
-    final double adjusted = value * displayUnit.scaleFor(value).multiplier;
-    return adjusted.toStringAsFixed(digits - 1);
-  }
+  ReadingFormat get _format => ReadingFormat(
+    units: units,
+    fullScale: max,
+    significantDigits: digits,
+    displayUnit: displayUnit,
+  );
 
-  String _getPrefix() => displayUnit.scaleFor(value).prefix;
+  String _formatValue() => _format.number(value);
 
-  String _formatTrackedValue(double trackedValue) {
-    final scale = displayUnit.scaleFor(trackedValue);
-    return '${(trackedValue * scale.multiplier).toStringAsFixed(5)}${scale.prefix}$units';
-  }
+  String _getPrefix() => _format.scaleFor(value).prefix;
+
+  String _formatTrackedValue(double trackedValue) =>
+      _format.format(trackedValue);
 }

@@ -8,11 +8,19 @@ import 'package:moosh_revolt/widgets/realtime_chart.dart';
 class GraphScreen extends StatefulWidget {
   final List<LinePoint> ch1Points;
   final List<LinePoint> ch2Points;
+  final String ch1Label;
+  final String ch2Label;
+  final String ch1CsvHeader;
+  final String ch2CsvHeader;
 
   const GraphScreen({
     super.key,
     required this.ch1Points,
     required this.ch2Points,
+    this.ch1Label = 'CH1',
+    this.ch2Label = 'CH2',
+    this.ch1CsvHeader = 'CH1',
+    this.ch2CsvHeader = 'CH2',
   });
 
   @override
@@ -78,8 +86,8 @@ class _GraphScreenState extends State<GraphScreen>
             child: RealtimeChart(
               ch1Points: _filterPoints(_ch1Points),
               ch2Points: _filterPoints(_ch2Points),
-              ch1Color: Colors.red,
-              ch2Color: Colors.blue,
+              ch1Label: widget.ch1Label,
+              ch2Label: widget.ch2Label,
             ),
           ),
           // Channel 1 only
@@ -87,24 +95,28 @@ class _GraphScreenState extends State<GraphScreen>
             padding: const EdgeInsets.all(12),
             child: RealtimeChart(
               ch1Points: _filterPoints(_ch1Points),
-              ch2Points: const [],
-              ch1Color: Colors.red,
+              ch2Points: _filterPoints(_ch2Points),
+              ch1Label: widget.ch1Label,
+              ch2Label: widget.ch2Label,
+              showCh2: false,
             ),
           ),
           // Channel 2 only
           Padding(
             padding: const EdgeInsets.all(12),
             child: RealtimeChart(
-              ch1Points: const [],
+              ch1Points: _filterPoints(_ch1Points),
               ch2Points: _filterPoints(_ch2Points),
-              ch2Color: Colors.blue,
+              ch1Label: widget.ch1Label,
+              ch2Label: widget.ch2Label,
+              showCh1: false,
             ),
           ),
         ],
       ),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(12),
-        color: Colors.grey.shade100,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -153,10 +165,13 @@ class _GraphScreenState extends State<GraphScreen>
     if (!await directory.exists()) await directory.create(recursive: true);
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
     final file = File('${directory.path}/mooshimeter_graph_$stamp.csv');
-    final rows = <String>['elapsed_s,current_a,voltage_v'];
-    for (var i = 0; i < _ch1Points.length; i++) {
-      rows.add('${_ch1Points[i].x},${_ch1Points[i].y},${_ch2Points[i].y}');
-    }
+    String value(double y) => y.isNaN ? 'OL' : '$y';
+    final rows = <String>[
+      'elapsed_s,${widget.ch1CsvHeader},${widget.ch2CsvHeader}',
+      for (var i = 0; i < _ch1Points.length; i++)
+        '${_ch1Points[i].x},${value(_ch1Points[i].y)},'
+            '${value(_ch2Points[i].y)}',
+    ];
     await file.writeAsString('${rows.join('\n')}\n');
     if (!mounted) return;
     ScaffoldMessenger.of(

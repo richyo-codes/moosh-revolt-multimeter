@@ -33,9 +33,6 @@ class DeviceScreen extends StatefulWidget {
 
 class _DeviceScreenState extends State<DeviceScreen>
     with WidgetsBindingObserver {
-  ChannelMode _ch1Mode = ChannelMode.current;
-  ChannelMode _ch2Mode = ChannelMode.voltage;
-  int _sampleRate = 125;
   late final BleProvider _bleProvider;
   late final SettingsProvider _settingsProvider;
 
@@ -47,7 +44,6 @@ class _DeviceScreenState extends State<DeviceScreen>
   double? _graphStartTimestamp;
   DisplayUnit _ch1DisplayUnit = DisplayUnit.auto;
   DisplayUnit _ch2DisplayUnit = DisplayUnit.auto;
-  int? _voltageRangeIndex;
   bool _showCh1 = true;
   bool _showCh2 = true;
   GraphStyle _graphStyle = GraphStyle.dualAxis;
@@ -75,7 +71,6 @@ class _DeviceScreenState extends State<DeviceScreen>
     if (!_providerListenerAttached) {
       _bleProvider = context.read<BleProvider>();
       _settingsProvider = context.read<SettingsProvider>();
-      _sampleRate = _settingsProvider.sampleRate;
       _bleProvider.addListener(_onBleProviderChanged);
       _providerListenerAttached = true;
     }
@@ -188,14 +183,18 @@ class _DeviceScreenState extends State<DeviceScreen>
         final isConnected = provider.state == MmConnectionState.connected;
         final readings = provider.latestReadings;
         final hasFreshReadings = provider.hasFreshReadings;
-        final ch1Value = hasFreshReadings ? readings?.ch1Value ?? 0.0 : 0.0;
-        final ch2Value = hasFreshReadings ? readings?.ch2Value ?? 0.0 : 0.0;
+        final ch1Display = hasFreshReadings && readings != null
+            ? _displayValue(readings, 0)
+            : 0.0;
+        final ch2Display = hasFreshReadings && readings != null
+            ? _displayValue(readings, 1)
+            : 0.0;
+        final ch1Value = ch1Display.isNaN ? 0.0 : ch1Display;
+        final ch2Value = ch2Display.isNaN ? 0.0 : ch2Display;
         final rssi = provider.rssi;
         final battery = provider.battery;
-        final ch1OutOfRange =
-            isConnected && ch1Value.abs() > 1.2 * Channel.ch1.max;
-        final ch2OutOfRange =
-            isConnected && ch2Value.abs() > 1.2 * Channel.ch2.max;
+        final ch1OutOfRange = isConnected && ch1Display.isNaN;
+        final ch2OutOfRange = isConnected && ch2Display.isNaN;
 
         return RepaintBoundary(
           key: _captureKey,
@@ -237,7 +236,9 @@ class _DeviceScreenState extends State<DeviceScreen>
                     if (isConnected)
                       PopupMenuItem(
                         value: 'sample-rate',
-                        child: Text('Sample rate: $_sampleRate Hz'),
+                        child: Text(
+                          'Sample rate: ${_sampleRateLabel(provider)}',
+                        ),
                       ),
                     if (isConnected)
                       const PopupMenuItem(
@@ -395,8 +396,8 @@ class _DeviceScreenState extends State<DeviceScreen>
         final readings = ReadingsDisplay(
           ch1Value: ch1Value,
           ch2Value: ch2Value,
-          ch1Mode: _ch1Mode,
-          ch2Mode: _ch2Mode,
+          ch1Mode: _mode(0),
+          ch2Mode: _mode(1),
           ch1OutOfRange: ch1OutOfRange,
           ch2OutOfRange: ch2OutOfRange,
           ch1DisplayUnit: _ch1DisplayUnit,
@@ -423,10 +424,11 @@ class _DeviceScreenState extends State<DeviceScreen>
           onCh2Configure: () => _showChannelConfigurator(1, provider),
           ch1PossiblyFloating: _isPossiblyFloating(_ch1Points, 0.0001),
           ch2PossiblyFloating: _isPossiblyFloating(_ch2Points, 0.005),
-          ch1Units: _channelUnits(0, _ch1Mode),
-          ch1Max: _channelMax(0, _ch1Mode),
-          ch2Units: _channelUnits(1, _ch2Mode),
-          ch2Max: _channelMax(1, _ch2Mode),
+          ch1Units: _mode(0).units,
+          ch1Max: _displayFullScale(0),
+          ch2Units: _mode(1).units,
+          ch2Max: _displayFullScale(1),
+          significantDigits: provider.significantDigits,
           compactLayout: landscapeLayout && constraints.maxHeight < 500,
           stackedLayout: landscapeLayout,
           showFloatingValues: showFloatingReadings,
@@ -441,8 +443,7 @@ class _DeviceScreenState extends State<DeviceScreen>
             }
           }),
         );
-        final ch1Continuity =
-            _continuityGraph && _ch1Mode == ChannelMode.resistance;
+        final continuityChannel = _continuityGraph ? _continuityChannel : null;
         final chart = Padding(
           padding: const EdgeInsets.all(12),
           child: RealtimeChart(
@@ -454,11 +455,10 @@ class _DeviceScreenState extends State<DeviceScreen>
                 setState(() => _showCh1 = visible),
             onCh2VisibilityChanged: (visible) =>
                 setState(() => _showCh2 = visible),
-            ch1Label: ch1Continuity
-                ? 'CH1 · Continuity (< ${continuityThresholdOhms.round()} Ω)'
-                : 'CH1 · ${_ch1Mode.label} (${_channelUnits(0, _ch1Mode)})',
-            ch1Continuity: ch1Continuity,
-            ch2Label: 'CH2 · ${_ch2Mode.label} (${_channelUnits(1, _ch2Mode)})',
+            ch1Label: _chartLabel(0, continuity: continuityChannel == 0),
+            ch2Label: _chartLabel(1, continuity: continuityChannel == 1),
+            ch1Continuity: continuityChannel == 0,
+            ch2Continuity: continuityChannel == 1,
             style: _graphStyle,
           ),
         );
@@ -575,8 +575,8 @@ class _DeviceScreenState extends State<DeviceScreen>
     int channel,
     BleProvider provider,
   ) async {
-    final isCh1 = channel == 0;
-    final channelName = isCh1 ? 'CH1' : 'CH2';
+    final channelName = 'CH${channel + 1}';
+    final otherName = 'CH${2 - channel}';
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -586,157 +586,141 @@ class _DeviceScreenState extends State<DeviceScreen>
           height: MediaQuery.sizeOf(sheetContext).height * 0.85,
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: StatefulBuilder(
-              builder: (context, setSheetState) {
-                final mode = isCh1 ? _ch1Mode : _ch2Mode;
-                final isVisible = isCh1 ? _showCh1 : _showCh2;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$channelName configuration',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isCh1
-                          ? 'Current, resistance, and auxiliary measurements'
-                          : 'Voltage and auxiliary measurements',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Show channel'),
-                      subtitle: const Text(
-                        'Include this channel in readings and graph',
+            // Rebuild on provider changes too: auto-ranging and the zero
+            // offset change while the sheet is open.
+            child: ListenableBuilder(
+              listenable: provider,
+              builder: (context, _) => StatefulBuilder(
+                builder: (context, setSheetState) {
+                  void update(VoidCallback change) {
+                    setState(change);
+                    setSheetState(() {});
+                  }
+
+                  final theme = Theme.of(context);
+                  final mode = _mode(channel);
+                  final isVisible = channel == 0 ? _showCh1 : _showCh2;
+                  final sharedBlocked = ChannelMode.forChannel(
+                    channel,
+                  ).any((m) => !provider.canUseInput(channel, m.input));
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$channelName configuration',
+                        style: theme.textTheme.titleLarge,
                       ),
-                      value: isVisible,
-                      onChanged: (visible) {
-                        setState(() {
-                          if (isCh1) {
+                      const SizedBox(height: 4),
+                      Text(
+                        channel == 0
+                            ? 'Current input (A jack) or the shared auxiliary input'
+                            : 'Voltage input (V jack) or the shared auxiliary input',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show channel'),
+                        subtitle: const Text(
+                          'Include this channel in readings and graph',
+                        ),
+                        value: isVisible,
+                        onChanged: (visible) => update(() {
+                          if (channel == 0) {
                             _showCh1 = visible;
                           } else {
                             _showCh2 = visible;
                           }
-                        });
-                        setSheetState(() {});
-                      },
-                    ),
-                    if (isCh1 && mode == ChannelMode.resistance) ...[
+                        }),
+                      ),
                       const Divider(),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        secondary: Icon(
-                          _continuityToneEnabled
-                              ? Icons.volume_up
-                              : Icons.volume_off,
-                        ),
-                        title: const Text('Continuity tone'),
-                        subtitle: Text(
-                          'Play a continuous tone below '
-                          '${continuityThresholdOhms.round()} Ω',
-                        ),
-                        value: _continuityToneEnabled,
-                        onChanged: (enabled) {
-                          setState(() => _setContinuityToneEnabled(enabled));
-                          setSheetState(() {});
-                        },
-                      ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        secondary: const Icon(Icons.show_chart),
-                        title: const Text('Continuity graph'),
-                        subtitle: const Text(
-                          'Plot open or continuous instead of ohms',
-                        ),
-                        value: _continuityGraph,
-                        onChanged: (enabled) {
-                          setState(() => _continuityGraph = enabled);
-                          setSheetState(() {});
-                        },
-                      ),
-                    ],
-                    const Divider(),
-                    Text(
-                      'Measurement',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _channelModesFor(channel).map((candidate) {
-                        return ChoiceChip(
-                          label: Text(candidate.label),
-                          selected: mode == candidate,
-                          onSelected: (selected) async {
-                            if (!selected) return;
-                            await _setChannelMode(channel, candidate, provider);
-                            if (sheetContext.mounted) setSheetState(() {});
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Input range',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isCh1
-                          ? _ch1RangeDescription(mode)
-                          : 'Auto keeps normal measurements on the 60 V input and changes only when needed.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    if (isCh1)
-                      ChoiceChip(
-                        label: Text(_ch1RangeLabel(mode)),
-                        selected: true,
-                        onSelected: (_) => provider.setRange(0, 0),
-                      )
-                    else if (mode == ChannelMode.internalTemperature)
-                      Text(
-                        'Temperature mode does not use a voltage range.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      )
-                    else
+                      Text('Measurement', style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          ChoiceChip(
-                            label: const Text('Auto (recommended)'),
-                            selected: _voltageRangeIndex == null,
-                            onSelected: (selected) {
-                              if (!selected) return;
-                              setState(() => _voltageRangeIndex = null);
-                              setSheetState(() {});
-                              provider.setVoltageRange(null);
-                            },
-                          ),
-                          for (final range in [
-                            (0, '60 V input'),
-                            (1, '600 V input'),
-                          ])
+                          for (final candidate in ChannelMode.forChannel(
+                            channel,
+                          ))
                             ChoiceChip(
-                              label: Text(range.$2),
-                              selected: _voltageRangeIndex == range.$1,
-                              onSelected: (selected) {
-                                if (!selected) return;
-                                setState(() => _voltageRangeIndex = range.$1);
-                                setSheetState(() {});
-                                provider.setVoltageRange(range.$1);
-                              },
+                              label: Text(candidate.label),
+                              selected: mode == candidate,
+                              tooltip:
+                                  provider.canUseInput(channel, candidate.input)
+                                  ? null
+                                  : 'The shared input is in use by $otherName',
+                              onSelected:
+                                  provider.canUseInput(channel, candidate.input)
+                                  ? (selected) async {
+                                      if (!selected) return;
+                                      await _setChannelMode(
+                                        channel,
+                                        candidate,
+                                        provider,
+                                      );
+                                      if (sheetContext.mounted) {
+                                        setSheetState(() {});
+                                      }
+                                    }
+                                  : null,
                             ),
                         ],
                       ),
-                  ],
-                );
-              },
+                      if (sharedBlocked) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Auxiliary voltage, resistance and diode share one '
+                          'input, which $otherName is using.',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      Text('Range', style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 8),
+                      _rangeSelector(channel, provider, update),
+                      const SizedBox(height: 12),
+                      _zeroControl(channel, provider),
+                      if (mode == ChannelMode.resistance) ...[
+                        const Divider(),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          secondary: Icon(
+                            _continuityToneEnabled
+                                ? Icons.volume_up
+                                : Icons.volume_off,
+                          ),
+                          title: const Text('Continuity tone'),
+                          subtitle: Text(
+                            'Beep below ${continuityThresholdOhms.round()} Ω. '
+                            'Holds the 1 kΩ range so the beep follows the '
+                            'probes without waiting for auto-ranging.',
+                          ),
+                          value: _continuityToneEnabled,
+                          onChanged: (enabled) {
+                            update(() => _setContinuityToneEnabled(enabled));
+                            unawaited(
+                              provider.setRange(channel, enabled ? 0 : null),
+                            );
+                          },
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          secondary: const Icon(Icons.show_chart),
+                          title: const Text('Continuity graph'),
+                          subtitle: const Text(
+                            'Plot open or continuous instead of ohms',
+                          ),
+                          value: _continuityGraph,
+                          onChanged: (enabled) =>
+                              update(() => _continuityGraph = enabled),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -744,81 +728,188 @@ class _DeviceScreenState extends State<DeviceScreen>
     );
   }
 
+  Widget _rangeSelector(
+    int channel,
+    BleProvider provider,
+    void Function(VoidCallback) update,
+  ) {
+    final ranges = provider.ranges(channel);
+    final mode = _mode(channel);
+    final textTheme = Theme.of(context).textTheme;
+    if (ranges.isEmpty) {
+      return Text('Connect to read the ranges', style: textTheme.bodySmall);
+    }
+    if (ranges.length == 1) {
+      return Text(
+        'Fixed range: ${_rangeLabel(ranges.single, mode)}',
+        style: textTheme.bodySmall,
+      );
+    }
+    final auto = provider.autoRange(channel);
+    final active =
+        ranges[provider.rangeIndex(channel).clamp(0, ranges.length - 1)];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ChoiceChip(
+          label: Text(auto ? 'Auto · ${_rangeLabel(active, mode)}' : 'Auto'),
+          selected: auto,
+          onSelected: (selected) {
+            if (selected) unawaited(provider.setRange(channel, null));
+          },
+        ),
+        for (var i = 0; i < ranges.length; i++)
+          ChoiceChip(
+            label: Text(_rangeLabel(ranges[i], mode)),
+            selected: !auto && provider.rangeIndex(channel) == i,
+            onSelected: (selected) {
+              if (selected) unawaited(provider.setRange(channel, i));
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _zeroControl(int channel, BleProvider provider) {
+    final mode = _mode(channel);
+    final offset = provider.offset(channel);
+    final readings = provider.hasFreshReadings ? provider.latestReadings : null;
+    final canZero = readings != null && !readings.overload(channel);
+    final format = ReadingFormat(
+      units: mode.units,
+      fullScale: _displayFullScale(channel),
+      significantDigits: provider.significantDigits,
+    );
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.exposure_zero),
+      title: const Text('Zero (relative reading)'),
+      subtitle: Text(
+        offset == 0
+            ? mode == ChannelMode.resistance
+                  ? 'Short the probes and zero to remove lead resistance.'
+                  : 'Subtract the present reading from later readings.'
+            : 'Subtracting ${format.format(offset)}',
+      ),
+      trailing: offset == 0
+          ? FilledButton.tonal(
+              onPressed: canZero
+                  ? () => unawaited(
+                      provider.setOffset(channel, readings.value(channel)),
+                    )
+                  : null,
+              child: const Text('Zero'),
+            )
+          : OutlinedButton(
+              onPressed: () => unawaited(provider.setOffset(channel, 0)),
+              child: const Text('Clear'),
+            ),
+    );
+  }
+
+  String _rangeLabel(double fullScale, ChannelMode mode) {
+    final display = mode.toDisplay(fullScale);
+    if (mode == ChannelMode.internalTemperature) {
+      return '${display.round()} °C';
+    }
+    final scale = SiScale.forRange(display);
+    final value = display * scale.multiplier;
+    final text = value == value.roundToDouble()
+        ? value.round().toString()
+        : value.toString();
+    return '$text ${scale.prefix}${mode.units}';
+  }
+
   Future<void> _setChannelMode(
     int channel,
     ChannelMode mode,
     BleProvider provider,
   ) async {
-    if (channel == 0 && _ch1Mode == ChannelMode.resistance) {
+    final previous = _mode(channel);
+    if (previous == mode) return;
+    if (_continuityChannel == channel) {
       setState(() => _setContinuityToneEnabled(false));
-      await provider.setContinuityEnabled(false);
-      if (!mounted) return;
     }
-    if (channel == 0 && mode == ChannelMode.resistance) {
-      _sampleDebounce?.cancel();
-      await provider.setContinuityEnabled(true);
-    } else if (mode.hardwareIndex >= 0) {
-      await provider.setInputMode(channel, mode.hardwareIndex);
-    }
+    final ok = await provider.setInput(channel, mode.input);
     if (!mounted) return;
+    if (!ok) {
+      _showMessage('The shared input is in use by the other channel');
+      return;
+    }
     setState(() {
       // A fixed prefix chosen for the old quantity (for example mA) is
       // meaningless for the new one (mΩ), so fall back to auto-ranging.
-      if (channel == 0) {
-        if (_ch1Mode.unitsFor(0) != mode.unitsFor(0)) {
+      if (previous.units != mode.units) {
+        if (channel == 0) {
           _ch1DisplayUnit = DisplayUnit.auto;
-        }
-        _ch1Mode = mode;
-      } else {
-        if (_ch2Mode.unitsFor(1) != mode.unitsFor(1)) {
+        } else {
           _ch2DisplayUnit = DisplayUnit.auto;
         }
-        _ch2Mode = mode;
+      }
+      // Earlier samples were a different quantity; keep the other channel's
+      // history and leave a gap in this one.
+      final points = channel == 0 ? _ch1Points : _ch2Points;
+      for (var i = 0; i < points.length; i++) {
+        points[i] = LinePoint(points[i].x, double.nan);
+      }
+      if (channel == 0) {
+        _resetCh1MinMax();
+      } else {
+        _resetCh2MinMax();
       }
     });
   }
 
-  List<ChannelMode> _channelModesFor(int channel) => channel == 0
-      ? const [
-          ChannelMode.current,
-          ChannelMode.currentAc,
-          ChannelMode.internalTemperature,
-          ChannelMode.auxiliaryVoltageDc,
-          ChannelMode.auxiliaryVoltageAc,
-          ChannelMode.resistance,
-          ChannelMode.diode,
-        ]
-      : const [
-          ChannelMode.voltage,
-          ChannelMode.voltageAc,
-          ChannelMode.internalTemperature,
-        ];
+  ChannelMode _mode(int channel) =>
+      ChannelMode.fromInput(channel, _bleProvider.input(channel));
 
-  String _channelUnits(int channel, ChannelMode mode) => mode.unitsFor(channel);
-
-  double _channelMax(int channel, ChannelMode mode) {
-    if (mode == ChannelMode.resistance) return 1000;
-    if (mode == ChannelMode.internalTemperature) return 100;
-    if (channel == 0 &&
-        (mode == ChannelMode.auxiliaryVoltageDc ||
-            mode == ChannelMode.auxiliaryVoltageAc)) {
-      return 600;
+  /// The channel measuring resistance, if any (only one channel can use the
+  /// shared input).
+  int? get _continuityChannel {
+    for (final channel in const [0, 1]) {
+      if (_mode(channel) == ChannelMode.resistance) return channel;
     }
-    return channel == 0 ? 10 : 600;
+    return null;
   }
 
-  String _ch1RangeLabel(ChannelMode mode) => switch (mode) {
-    ChannelMode.current => '10 A input',
-    ChannelMode.resistance => '1 kΩ input',
-    _ => 'Default input range',
-  };
+  /// Full scale of [channel]'s active range in its display unit.
+  double? _displayFullScale(int channel) {
+    final fullScale = _bleProvider.rangeMax(channel);
+    return fullScale == null ? null : _mode(channel).toDisplay(fullScale);
+  }
 
-  String _ch1RangeDescription(ChannelMode mode) => switch (mode) {
-    ChannelMode.current => 'CH1 current uses the 10 A input range.',
-    ChannelMode.resistance =>
-      'Resistance and continuity use the 1 kΩ input range.',
-    _ => 'This measurement uses the meter default range.',
-  };
+  /// [channel]'s reading in its display unit, or NaN when it is not a
+  /// measurement (input saturated, or a resistance driven by a voltage).
+  double _displayValue(DeviceReadings readings, int channel) {
+    if (readings.overload(channel)) return double.nan;
+    final mode = _mode(channel);
+    final value = mode.toDisplay(readings.value(channel));
+    final fullScale = _bleProvider.rangeMax(channel);
+    if (fullScale != null && mode.isImplausible(value, fullScale)) {
+      return double.nan;
+    }
+    return value;
+  }
+
+  String _chartLabel(int channel, {required bool continuity}) {
+    final name = 'CH${channel + 1}';
+    if (continuity) {
+      return '$name · Continuity (< ${continuityThresholdOhms.round()} Ω)';
+    }
+    final mode = _mode(channel);
+    return '$name · ${mode.label} (${mode.units})';
+  }
+
+  String _csvHeader(int channel) {
+    final mode = _mode(channel);
+    return 'CH${channel + 1} ${mode.label} (${mode.units})';
+  }
+
+  String _sampleRateLabel(BleProvider provider) =>
+      provider.sampleRateSetting == null
+      ? 'Auto (${provider.sampleRateHz} Hz)'
+      : '${provider.sampleRateHz} Hz';
 
   String get _graphStyleLabel => switch (_graphStyle) {
     GraphStyle.split => 'Split',
@@ -859,24 +950,18 @@ class _DeviceScreenState extends State<DeviceScreen>
     _graphStartTimestamp ??= reading.timestamp;
     final elapsed = reading.timestamp - _graphStartTimestamp!;
     if (_ch1Points.isNotEmpty && elapsed <= _ch1Points.last.x) return;
+    final ch1 = _displayValue(reading, 0);
+    final ch2 = _displayValue(reading, 1);
     setState(() {
-      _ch1Points.add(LinePoint(elapsed, reading.ch1Value));
-      _ch2Points.add(LinePoint(elapsed, reading.ch2Value));
-      if (_ch1MinMaxTracking) {
-        _ch1Minimum = _ch1Minimum == null
-            ? reading.ch1Value
-            : math.min(_ch1Minimum!, reading.ch1Value);
-        _ch1Maximum = _ch1Maximum == null
-            ? reading.ch1Value
-            : math.max(_ch1Maximum!, reading.ch1Value);
+      _ch1Points.add(LinePoint(elapsed, ch1));
+      _ch2Points.add(LinePoint(elapsed, ch2));
+      if (_ch1MinMaxTracking && !ch1.isNaN) {
+        _ch1Minimum = math.min(_ch1Minimum ?? ch1, ch1);
+        _ch1Maximum = math.max(_ch1Maximum ?? ch1, ch1);
       }
-      if (_ch2MinMaxTracking) {
-        _ch2Minimum = _ch2Minimum == null
-            ? reading.ch2Value
-            : math.min(_ch2Minimum!, reading.ch2Value);
-        _ch2Maximum = _ch2Maximum == null
-            ? reading.ch2Value
-            : math.max(_ch2Maximum!, reading.ch2Value);
+      if (_ch2MinMaxTracking && !ch2.isNaN) {
+        _ch2Minimum = math.min(_ch2Minimum ?? ch2, ch2);
+        _ch2Maximum = math.max(_ch2Maximum ?? ch2, ch2);
       }
       _pointCount++;
       final maxPoints = _settingsProvider.graphMaxPoints;
@@ -894,13 +979,14 @@ class _DeviceScreenState extends State<DeviceScreen>
     final continuityReady =
         _continuityReadyAt != null &&
         !DateTime.now().isBefore(_continuityReadyAt!);
+    final channel = _continuityChannel;
     final shouldSound =
         reading != null &&
+        channel != null &&
         _bleProvider.state == MmConnectionState.connected &&
         _continuityToneEnabled &&
-        _ch1Mode == ChannelMode.resistance &&
         continuityReady &&
-        hasContinuity(reading.ch1Value);
+        hasContinuity(_displayValue(reading, channel));
     if (shouldSound == _continuityToneWanted) return;
     _continuityToneWanted = shouldSound;
     if (shouldSound) {
@@ -1030,12 +1116,17 @@ class _DeviceScreenState extends State<DeviceScreen>
       DateTime.now().toIso8601String().replaceAll(':', '-');
 
   Future<void> _saveDataSnapshot() async {
-    final rows = <String>['elapsed_s,current_a,voltage_v'];
-    for (var i = 0; i < _ch1Points.length; i++) {
-      rows.add('${_ch1Points[i].x},${_ch1Points[i].y},${_ch2Points[i].y}');
-    }
+    final rows = <String>[
+      'elapsed_s,${_csvHeader(0)},${_csvHeader(1)}',
+      for (var i = 0; i < _ch1Points.length; i++)
+        '${_ch1Points[i].x},${_csvValue(_ch1Points[i].y)},'
+            '${_csvValue(_ch2Points[i].y)}',
+    ];
     await _saveRows(rows, 'snapshot');
   }
+
+  /// Overloaded samples are stored as NaN and exported as "OL".
+  static String _csvValue(double value) => value.isNaN ? 'OL' : '$value';
 
   Future<void> _saveRows(List<String> rows, String kind) async {
     if (rows.length <= 1) {
@@ -1085,19 +1176,22 @@ class _DeviceScreenState extends State<DeviceScreen>
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: [125, 250, 500, 1000, 2000, 4000, 8000].map((rate) {
+              runSpacing: 8,
+              children: [null, ...provider.sampleRates].map((rate) {
                 return ChoiceChip(
-                  label: Text('$rate Hz'),
-                  selected: _sampleRate == rate,
+                  label: Text(rate == null ? 'Auto' : '$rate Hz'),
+                  selected: provider.sampleRateSetting == rate,
                   onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _sampleRate = rate);
-                      _settingsProvider.sampleRate = rate;
-                      provider.setSampleRate(rate);
-                    }
+                    if (selected) unawaited(_setSampleRate(rate));
                   },
                 );
               }).toList(),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Auto samples DC at 125 Hz for the most digits and AC at '
+              '4 kHz so RMS covers whole mains cycles.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const Divider(height: 32),
             const Text(
@@ -1246,6 +1340,10 @@ class _DeviceScreenState extends State<DeviceScreen>
             builder: (_) => GraphScreen(
               ch1Points: List.of(_ch1Points),
               ch2Points: List.of(_ch2Points),
+              ch1Label: _chartLabel(0, continuity: false),
+              ch2Label: _chartLabel(1, continuity: false),
+              ch1CsvHeader: _csvHeader(0),
+              ch2CsvHeader: _csvHeader(1),
             ),
           ),
         );
@@ -1298,27 +1396,34 @@ class _DeviceScreenState extends State<DeviceScreen>
   }
 
   Future<void> _showSampleRatePicker() async {
-    final rate = await showDialog<int>(
+    final current = _bleProvider.sampleRateSetting;
+    // Wrap the choice so "Auto" (null) differs from a dismissed dialog.
+    final choice = await showDialog<({int? rate})>(
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Sample rate'),
-        children: [125, 250, 500, 1000, 2000, 4000, 8000]
+        children: [null, ..._bleProvider.sampleRates]
             .map(
               (rate) => ListTile(
                 leading: Icon(
-                  rate == _sampleRate
+                  rate == current
                       ? Icons.radio_button_checked
                       : Icons.radio_button_unchecked,
                 ),
-                title: Text('$rate Hz'),
-                onTap: () => Navigator.pop(context, rate),
+                title: Text(
+                  rate == null ? 'Auto (125 Hz DC, 4 kHz AC)' : '$rate Hz',
+                ),
+                onTap: () => Navigator.pop(context, (rate: rate)),
               ),
             )
             .toList(),
       ),
     );
-    if (rate == null || !mounted) return;
-    setState(() => _sampleRate = rate);
+    if (choice == null || !mounted) return;
+    await _setSampleRate(choice.rate);
+  }
+
+  Future<void> _setSampleRate(int? rate) async {
     _settingsProvider.sampleRate = rate;
     await _bleProvider.setSampleRate(rate);
   }
@@ -1344,7 +1449,8 @@ class _DeviceScreenState extends State<DeviceScreen>
     }
     final command =
         'dart run tool/mooshimeter_log.dart --device ${widget.device.deviceId} '
-        '--channel $channel --rate $_sampleRate --output readings.csv';
+        '--channel $channel --rate ${_bleProvider.sampleRateHz} '
+        '--output readings.csv';
     await Clipboard.setData(ClipboardData(text: command));
     _showMessage('CSV logger command copied');
   }

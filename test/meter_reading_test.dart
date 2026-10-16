@@ -2,56 +2,81 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 
 void main() {
-  test('formats ordinary volts without an SI prefix', () {
-    final scale = SiScale.forValue(1.2);
-    expect(scale.multiplier, 1);
-    expect(scale.prefix, '');
-    expect(
-      MeterReading(
-        timestamp: 0,
-        value: 1.2,
-        units: 'V',
-        digits: 4,
-        max: 60,
-      ).formatted,
-      ' 1.200V',
-    );
-  });
-
-  test('formats small voltages with the correct SI prefix', () {
+  test('picks SI prefixes for loose values', () {
     final micro = SiScale.forValue(0.0000732756);
     expect(0.0000732756 * micro.multiplier, closeTo(73.2756, 0.0001));
     expect(micro.prefix, 'μ');
-
-    final nano = SiScale.forValue(4e-9);
-    expect(4e-9 * nano.multiplier, closeTo(4, 0.0001));
-    expect(nano.prefix, 'n');
+    expect(SiScale.forValue(4e-9).prefix, 'n');
   });
 
-  test('uses the physical Mooshimeter channel units', () {
-    expect(Channel.ch1.units, 'A');
-    expect(Channel.ch2.units, 'V');
+  test('picks the bench-meter prefix for a range', () {
+    expect(SiScale.forRange(1000).prefix, '');
+    expect(SiScale.forRange(1e4).prefix, 'k');
+    expect(SiScale.forRange(1e6).prefix, 'k');
+    expect(SiScale.forRange(600).prefix, '');
+    expect(SiScale.forRange(60).prefix, '');
+    expect(SiScale.forRange(1e7).prefix, 'M');
+    expect(SiScale.forRange(0.1).prefix, 'm');
+  });
+
+  test('fixes the decimal point by range and resolution', () {
+    const volts = ReadingFormat(
+      units: 'V',
+      fullScale: 60,
+      significantDigits: 6,
+    );
+    expect(volts.format(14.24), '14.2400 V');
+    const ohms = ReadingFormat(
+      units: 'Ω',
+      fullScale: 1e4,
+      significantDigits: 5,
+    );
+    expect(ohms.format(4700), '4.700 kΩ');
+    // The prefix follows the range, not the value, so digits stay put.
+    expect(ohms.format(12), '0.012 kΩ');
+    const kelvin = ReadingFormat(
+      units: '°C',
+      fullScale: 76.85,
+      significantDigits: 6,
+    );
+    expect(kelvin.format(25.123), '25.12 °C');
   });
 
   test('reports each channel mode in the unit the firmware measures', () {
-    expect(ChannelMode.resistance.unitsFor(0), 'Ω');
-    expect(ChannelMode.diode.unitsFor(0), 'V');
-    expect(ChannelMode.auxiliaryVoltageDc.unitsFor(0), 'V');
-    expect(ChannelMode.current.unitsFor(0), 'A');
-    expect(ChannelMode.currentAc.unitsFor(0), 'A');
-    expect(ChannelMode.voltage.unitsFor(1), 'V');
-    expect(ChannelMode.internalTemperature.unitsFor(1), '°C');
+    expect(ChannelMode.resistance.units, 'Ω');
+    expect(ChannelMode.diode.units, 'V');
+    expect(ChannelMode.auxiliaryVoltageDc.units, 'V');
+    expect(ChannelMode.current.units, 'A');
+    expect(ChannelMode.currentAc.units, 'A');
+    expect(ChannelMode.voltage.units, 'V');
+    expect(ChannelMode.internalTemperature.units, '°C');
+    expect(
+      ChannelMode.internalTemperature.toDisplay(298.15),
+      closeTo(25, 1e-9),
+    );
   });
 
-  test('formats resistance with ohm prefixes like a bench meter', () {
-    final reading = MeterReading(
-      timestamp: 0,
-      value: 4700,
-      units: ChannelMode.resistance.unitsFor(0),
-      digits: 4,
-      max: 1000,
+  test('maps modes onto the meter\'s named inputs', () {
+    expect(ChannelMode.diode.input.shared, 'DIODE');
+    expect(ChannelMode.diode.input.mapping, 'SHARED');
+    expect(ChannelMode.currentAc.input.mapping, 'CURRENT');
+    expect(ChannelMode.currentAc.input.analysis, 'RMS');
+    expect(ChannelMode.internalTemperature.input.mapping, 'TEMP');
+    expect(
+      ChannelMode.fromInput(1, ChannelMode.resistance.input),
+      ChannelMode.resistance,
     );
-    expect(reading.formatted, ' 4.700kΩ');
+    expect(ChannelMode.forChannel(0), isNot(contains(ChannelMode.voltage)));
+    expect(ChannelMode.forChannel(1), contains(ChannelMode.diode));
+  });
+
+  test('flags resistance driven by an external voltage', () {
+    expect(ChannelMode.resistance.isImplausible(-1.3, 1000), isFalse);
+    expect(ChannelMode.resistance.isImplausible(-977.7, 1000), isTrue);
+    expect(ChannelMode.voltage.isImplausible(-50, 60), isFalse);
+  });
+
+  test('offers ohm prefixes like a bench meter', () {
     expect(DisplayUnit.choicesFor('Ω'), [
       DisplayUnit.auto,
       DisplayUnit.base,
@@ -67,10 +92,7 @@ void main() {
     expect(hasContinuity(0.2), isTrue);
     expect(hasContinuity(49.9), isTrue);
     expect(hasContinuity(50), isFalse);
-    // Open circuit saturates at about +1266 Ω on the 1 kΩ range.
     expect(hasContinuity(1265.95), isFalse);
-    // Negative saturation is a front-end artefact, not a short.
-    expect(hasContinuity(-977.7), isFalse);
     expect(hasContinuity(double.nan), isFalse);
   });
 }

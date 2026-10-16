@@ -206,11 +206,22 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               ListTile(
                 title: const Text('Default sample rate'),
-                subtitle: Text('${settings.sampleRate} Hz'),
+                subtitle: Text(
+                  settings.sampleRate == null
+                      ? 'Auto (125 Hz DC, 4 kHz AC)'
+                      : '${settings.sampleRate} Hz',
+                ),
+                // 0 stands for Auto in the menu; the setting stores null.
                 trailing: PopupMenuButton<int>(
-                  onSelected: (rate) => settings.sampleRate = rate,
-                  itemBuilder: (_) => [125, 250, 500, 1000, 2000, 4000, 8000]
-                      .map((r) => PopupMenuItem(value: r, child: Text('$r Hz')))
+                  onSelected: (rate) =>
+                      settings.sampleRate = rate == 0 ? null : rate,
+                  itemBuilder: (_) => [0, 125, 250, 500, 1000, 2000, 4000, 8000]
+                      .map(
+                        (r) => PopupMenuItem(
+                          value: r,
+                          child: Text(r == 0 ? 'Auto' : '$r Hz'),
+                        ),
+                      )
                       .toList(),
                 ),
               ),

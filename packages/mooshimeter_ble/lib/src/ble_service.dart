@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
+import 'meter_input.dart';
 import 'mooshimeter_protocol.dart';
 
 /// CRC32 lookup table (standard polynomial 0xEDB88320).
@@ -86,15 +88,27 @@ class ConfigNode {
 
 /// Reading data from both channels.
 class DeviceReadings {
+  /// Channel values in the meter's native units (amps, volts, ohms, and
+  /// kelvin for temperature), with the channel offset already removed.
   final double ch1Value;
   final double ch2Value;
   final double timestamp;
+
+  /// Whether a channel's input was saturated on its current range. The value
+  /// is then meaningless and should be shown as overload ("OL").
+  final bool ch1Overload;
+  final bool ch2Overload;
 
   DeviceReadings({
     required this.ch1Value,
     required this.ch2Value,
     required this.timestamp,
+    this.ch1Overload = false,
+    this.ch2Overload = false,
   });
+
+  double value(int channel) => channel == 0 ? ch1Value : ch2Value;
+  bool overload(int channel) => channel == 0 ? ch1Overload : ch2Overload;
 
   @override
   String toString() =>
@@ -129,9 +143,20 @@ class BleProvider extends ChangeNotifier {
   bool _readingStreamActive = false;
   bool _readingPollInProgress = false;
   bool _transportConnected = false;
-  bool _voltageAutoRange = true;
-  int _voltageRangeIndex = 0;
-  bool _voltageRangeChangeInProgress = false;
+
+  // Measurement configuration. It belongs to the app session rather than
+  // the link, so it survives a disconnect and is re-applied on reconnect.
+  final List<MeterInput> _inputs = [
+    MeterInput.ch1Default,
+    MeterInput.ch2Default,
+  ];
+  final List<bool> _autoRange = [true, true];
+  final List<int> _rangeIndex = [0, 0];
+  final List<double> _offsets = [0, 0];
+  int? _sampleRateSetting;
+  int _sampleRateIndex = 0;
+  int _bufferDepth = 64;
+  bool _rangeChangeInProgress = false;
   final MooshimeterSerialReassembler _serialReassembler =
       MooshimeterSerialReassembler();
   final MooshimeterFrameDecoder _frameDecoder = MooshimeterFrameDecoder();
@@ -188,8 +213,55 @@ class BleProvider extends ChangeNotifier {
   Stream<DeviceReadings> get readings => _readingsController.stream;
   double get battery => _battery;
   bool get isConnected => _state == MmConnectionState.connected;
-  bool get voltageAutoRange => _voltageAutoRange;
-  int get voltageRangeIndex => _voltageRangeIndex;
+
+  /// What [channel] (0 = CH1) currently measures.
+  MeterInput input(int channel) => _inputs[channel];
+
+  /// Whether [channel] may switch to [input]: the shared auxiliary input
+  /// (auxiliary voltage, resistance, diode) serves one channel at a time.
+  bool canUseInput(int channel, MeterInput input) =>
+      !input.usesShared || !_inputs[1 - channel].usesShared;
+
+  /// Full-scale values of [channel]'s ranges, from the meter's tree.
+  List<double> ranges(int channel) {
+    final tree = _tree;
+    return tree == null
+        ? const []
+        : MeterRanges.forInput(tree, channel, _inputs[channel]);
+  }
+
+  bool autoRange(int channel) => _autoRange[channel];
+  int rangeIndex(int channel) => _rangeIndex[channel];
+
+  /// Full scale of [channel]'s active range, or null before the handshake.
+  double? rangeMax(int channel) {
+    final values = ranges(channel);
+    if (values.isEmpty) return null;
+    return values[_rangeIndex[channel].clamp(0, values.length - 1)];
+  }
+
+  /// The value the meter subtracts from [channel] (its "zero").
+  double offset(int channel) => _offsets[channel];
+
+  /// The requested sample rate, or null when it follows the inputs.
+  int? get sampleRateSetting => _sampleRateSetting;
+  int get sampleRateHz => _sampleRates[_sampleRateIndex];
+  int get bufferDepth => _bufferDepth;
+
+  /// Significant digits supported by the current rate and buffer depth.
+  int get significantDigits => MeterRanges.significantDigits(
+    sampleRateIndex: _sampleRateIndex,
+    bufferDepth: _bufferDepth,
+  );
+
+  /// Time the meter takes to fill one averaging buffer.
+  Duration get bufferPeriod =>
+      Duration(microseconds: (_bufferDepth * 1e6 / sampleRateHz).round());
+
+  static const _sampleRates = [125, 250, 500, 1000, 2000, 4000, 8000];
+
+  /// Sample rates the meter supports.
+  List<int> get sampleRates => _sampleRates;
   int? get sdLogStatus => _sdLogStatus;
   bool get sdCardReady => _sdLogStatus == 0;
   bool get sdLoggingEnabled => _sdLoggingEnabled;
@@ -252,7 +324,10 @@ class BleProvider extends ChangeNotifier {
   }
 
   /// Connect to a Mooshimeter device and run the config tree handshake.
-  Future<bool> connect(BleDevice device, {int sampleRate = 125}) async {
+  ///
+  /// [sampleRate] is the requested rate in Hz, or null to choose it from the
+  /// inputs (125 Hz for DC, 4 kHz for AC).
+  Future<bool> connect(BleDevice device, {int? sampleRate}) async {
     final deviceId = device.deviceId;
     debugPrint(
       '[BLE] >>> connect START device="${device.name}" addr=$deviceId',
@@ -317,7 +392,8 @@ class BleProvider extends ChangeNotifier {
       // The VALUE nodes are only updated after the meter's acquisition engine
       // is configured and started.  Polling them before this returns valid
       // protocol frames, but normally just zeroes.
-      await _configureMeasurement(sampleRate);
+      _sampleRateSetting = sampleRate;
+      await _configureMeasurement();
 
       // A transport loss can occur while the handshake/configuration is in
       // progress. Do not resurrect the connection state after that loss.
@@ -418,71 +494,66 @@ class BleProvider extends ChangeNotifier {
     _lastReadingsAt = null;
     _rssi = -999;
     _battery = 0.0;
-    _voltageAutoRange = true;
-    _voltageRangeIndex = 0;
-    _voltageRangeChangeInProgress = false;
+    _rangeChangeInProgress = false;
   }
 
-  /// Set sample rate (Hz).
-  Future<void> setSampleRate(int rate) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    // SAMPLING.RATE is a chooser: write the index of the first supported rate
-    // greater than or equal to the requested rate.
-    const supportedRates = [125, 250, 500, 1000, 2000, 4000, 8000];
-    final chooserIndex = supportedRates.indexWhere((value) => value >= rate);
-    final index = chooserIndex < 0 ? supportedRates.length - 1 : chooserIndex;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId('SAMPLING:RATE', ConfigNode.samplingRate),
-      value: Uint8List(1)..[0] = index,
-    );
-    debugPrint(
-      '[BLE]     setSampleRate($rate Hz): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
-  }
-
-  /// Set channel range (0=600V/10A, 1=60V/1A, 2=6V/100mA, 3=600mV/10mA, 4=60mV/1mA, 5=6mV).
-  Future<void> setRange(int channel, int range) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    final nodeId = channel == 0 ? ConfigNode.ch1RangeI : ConfigNode.ch2RangeI;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId(channel == 0 ? 'CH1:RANGE_I' : 'CH2:RANGE_I', nodeId),
-      value: Uint8List(1)..[0] = range,
-    );
-    debugPrint(
-      '[BLE]     setRange(channel=$channel, range=$range): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
-    if (channel == 1) _voltageRangeIndex = range;
-  }
-
-  Future<void> setVoltageRange(int? rangeIndex) async {
-    _voltageAutoRange = rangeIndex == null;
-    final target = rangeIndex ?? (_ch2Value.abs() > 54 ? 1 : 0);
-    await setRange(1, target);
-    notifyListeners();
-  }
-
-  Future<void> setContinuityEnabled(bool enabled) async {
-    // A mode/range change leaves one or more old conversions in the meter's
-    // pipeline. Do not publish them as resistance/current readings.
-    _discardReadingsUntil = DateTime.now().add(
-      const Duration(milliseconds: 800),
-    );
-    _latestReadings = null;
-    notifyListeners();
-    if (enabled) {
-      await _writeChooser('SHARED', ConfigNode.shared, 1); // resistance
-      await _writeChooser('CH1:MAPPING', ConfigNode.ch1Mapping, 2); // shared
-      await setRange(0, 0); // 1 kΩ resistance range
-    } else {
-      await _writeChooser('CH1:MAPPING', ConfigNode.ch1Mapping, 0); // current
-      await setRange(0, 0); // 10 A range
+  /// Sets the sample rate in Hz, or null to follow the inputs: 125 Hz for
+  /// DC measurements and 4 kHz when either channel measures AC (RMS), as the
+  /// original Mooshimeter app does.
+  Future<void> setSampleRate(int? rate) async {
+    _sampleRateSetting = rate;
+    if (_deviceId == null || !_handshakeDone) {
+      notifyListeners();
+      return;
     }
+    await _applySampling();
+    notifyListeners();
+  }
+
+  /// Selects [input] on [channel] (0 = CH1). Returns false when the other
+  /// channel already uses the shared auxiliary input.
+  Future<bool> setInput(int channel, MeterInput input) async {
+    if (!canUseInput(channel, input)) return false;
+    _inputs[channel] = input;
+    _rangeIndex[channel] = _initialRange(channel);
+    if (_deviceId != null && _handshakeDone) {
+      _discardStaleReadings();
+      await _applyChannel(channel);
+      await _applySampling();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Fixes [channel] to range [index] of [ranges], or auto-ranges when
+  /// [index] is null.
+  Future<void> setRange(int channel, int? index) async {
+    _autoRange[channel] = index == null;
+    if (index != null) {
+      final count = ranges(channel).length;
+      _rangeIndex[channel] = count == 0 ? 0 : index.clamp(0, count - 1);
+      if (_deviceId != null && _handshakeDone) {
+        _discardStaleReadings();
+        await _writeRange(channel);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Sets the value the meter subtracts from [channel], for example the lead
+  /// resistance in resistance mode. Use 0 to clear it.
+  Future<void> setOffset(int channel, double offset) async {
+    _offsets[channel] = offset;
+    if (_deviceId != null && _handshakeDone) {
+      final data = Uint8List(4);
+      ByteData.view(data.buffer).setFloat32(0, offset, Endian.little);
+      await _writeValue(
+        'CH${channel + 1}:OFFSET',
+        channel == 0 ? ConfigNode.ch1Offset : ConfigNode.ch2Offset,
+        data,
+      );
+    }
+    notifyListeners();
   }
 
   /// Query the meter's SD-card logger state. LOG:STATUS reports whether the
@@ -521,52 +592,96 @@ class BleProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set channel input mode.
-  Future<void> setInputMode(int channel, int mode) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    final nodeId = channel == 0 ? ConfigNode.ch1Mapping : ConfigNode.ch2Mapping;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: nodeId,
-      value: Uint8List(1)..[0] = mode,
-    );
-    debugPrint(
-      '[BLE]     setInputMode(channel=$channel, mode=$mode): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
+  Future<void> _configureMeasurement() async {
+    debugPrint('[BLE]     configuring sampling and channel inputs');
+    // Two channels cannot share the auxiliary input; a stale combination
+    // (for example from an older app version) falls back to the defaults.
+    if (_inputs[0].usesShared && _inputs[1].usesShared) {
+      _inputs[1] = MeterInput.ch2Default;
+    }
+    await _applySampling();
+    for (final channel in const [0, 1]) {
+      _rangeIndex[channel] = _autoRange[channel]
+          ? _initialRange(channel)
+          : _rangeIndex[channel];
+      await _applyChannel(channel);
+    }
+    for (final channel in const [0, 1]) {
+      final value = await _readNode(
+        'CH${channel + 1}:OFFSET',
+        channel == 0 ? ConfigNode.ch1Offset : ConfigNode.ch2Offset,
+      );
+      if (value != null && value.length >= 4) {
+        _offsets[channel] = ByteData.view(
+          value.buffer,
+          value.offsetInBytes,
+        ).getFloat32(0, Endian.little);
+      }
+    }
+    await _writeChooserByName('SAMPLING:TRIGGER', 'CONTINUOUS');
   }
 
-  Future<void> _configureMeasurement(int sampleRate) async {
-    debugPrint('[BLE]     configuring sampling and channel analysis');
-    await setSampleRate(sampleRate);
-    await _writeChooser(
-      'SAMPLING:DEPTH',
-      ConfigNode.samplingDepth,
-      1,
-    ); // 64 samples
-    await _writeChooser('CH1:ANALYSIS', ConfigNode.ch1Analysis, 0); // mean/DC
-    await _writeChooser('CH2:ANALYSIS', ConfigNode.ch2Analysis, 0); // mean/DC
-    // CH2's first mapping is VOLTAGE; this is the normal voltage input.
-    await _writeChooser('CH2:MAPPING', ConfigNode.ch2Mapping, 0);
-    // RANGE_I is the index within the active mapping's range choices.
-    await setRange(0, 0); // CH1 current: 10 A
-    await setRange(1, 0); // CH2 voltage: 60 V (best range for a 1.2 V cell)
-    await _writeChooser(
-      'SAMPLING:TRIGGER',
-      ConfigNode.samplingTrigger,
-      2,
-    ); // continuous
+  /// Auto-ranging starts on the highest range, as bench meters do. Ranging
+  /// down jumps straight to the right range in one step, whereas ranging up
+  /// from a saturated reading can only climb one range per sample.
+  int _initialRange(int channel) => math.max(0, ranges(channel).length - 1);
+
+  Future<void> _applyChannel(int channel) async {
+    final input = _inputs[channel];
+    final prefix = 'CH${channel + 1}';
+    if (input.shared != null) {
+      await _writeChooserByName('SHARED', input.shared!);
+    }
+    await _writeChooserByName('$prefix:MAPPING', input.mapping);
+    await _writeChooserByName('$prefix:ANALYSIS', input.analysis);
+    await _writeRange(channel);
   }
 
-  Future<void> _writeChooser(String path, int fallbackNodeId, int index) async {
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId(path, fallbackNodeId),
-      value: Uint8List(1)..[0] = index,
+  Future<void> _writeRange(int channel) async {
+    await _writeValue(
+      'CH${channel + 1}:RANGE_I',
+      channel == 0 ? ConfigNode.ch1RangeI : ConfigNode.ch2RangeI,
+      Uint8List.fromList([_rangeIndex[channel]]),
     );
-    debugPrint('[BLE]     write chooser $path index=$index');
-    await _sendPacket(packet);
+  }
+
+  Future<void> _applySampling() async {
+    final rms = _inputs.any((input) => input.isRms);
+    final rate = _sampleRateSetting ?? (rms ? 4000 : 125);
+    final index = _sampleRates.indexWhere((value) => value >= rate);
+    _sampleRateIndex = index < 0 ? _sampleRates.length - 1 : index;
+    // RMS needs whole cycles of the waveform: 256 samples at 4 kHz cover
+    // several mains periods. DC averages 64 samples.
+    _bufferDepth = rms ? 256 : 64;
+    await _writeChooserByName('SAMPLING:RATE', '$sampleRateHz');
+    await _writeChooserByName('SAMPLING:DEPTH', '$_bufferDepth');
+  }
+
+  /// Drops readings converted before a configuration change. The buffer
+  /// already filling finishes within one period, but its notification can
+  /// arrive a period later over BLE; measured on a V.1, one period let a
+  /// stale 1 kΩ-range value through after switching to 10 kΩ.
+  void _discardStaleReadings() {
+    _discardReadingsUntil = DateTime.now().add(
+      bufferPeriod * 2 + const Duration(milliseconds: 100),
+    );
+    _latestReadings = null;
+  }
+
+  Future<void> _writeChooserByName(String path, String option) async {
+    final node = _tree?.find(path);
+    final index = node?.children.indexWhere((child) => child.name == option);
+    if (node == null || node.id == null || index == null || index < 0) {
+      throw StateError('Meter tree has no option $option for $path');
+    }
+    debugPrint('[BLE]     write chooser $path = $option (index $index)');
+    await _sendPacket(
+      _buildPacket(
+        write: true,
+        nodeId: node.id!,
+        value: Uint8List.fromList([index]),
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
 
@@ -832,7 +947,7 @@ class BleProvider extends ChangeNotifier {
         ).getFloat32(0, Endian.little);
         _updateReadings(emitCompleteSample: true);
         debugPrint('[BLE]       CH2.VALUE = $_ch2Value');
-        _updateVoltageAutorange();
+        _applyAutorange();
       }
       return;
     }
@@ -862,22 +977,36 @@ class BleProvider extends ChangeNotifier {
     }
   }
 
-  void _updateVoltageAutorange() {
-    if (!_voltageAutoRange || _voltageRangeChangeInProgress) return;
-    final magnitude = _ch2Value.abs();
-    final target = _voltageRangeIndex == 0 && magnitude > 54
-        ? 1
-        : _voltageRangeIndex == 1 && magnitude < 48
-        ? 0
-        : _voltageRangeIndex;
-    if (target == _voltageRangeIndex) return;
-    _voltageRangeChangeInProgress = true;
-    unawaited(
-      setRange(
-        1,
-        target,
-      ).whenComplete(() => _voltageRangeChangeInProgress = false),
-    );
+  /// Moves auto-ranging channels to a better range after a complete sample.
+  void _applyAutorange() {
+    if (_rangeChangeInProgress) return;
+    final readings = _latestReadings;
+    if (readings == null) return;
+    for (final channel in const [0, 1]) {
+      if (!_autoRange[channel]) continue;
+      final values = ranges(channel);
+      if (values.length < 2) continue;
+      // The meter subtracts the offset; range on what the input sees.
+      final raw = readings.overload(channel)
+          ? double.infinity
+          : readings.value(channel) + _offsets[channel];
+      final target = MeterRanges.autorange(values, _rangeIndex[channel], raw);
+      if (target == _rangeIndex[channel]) continue;
+      debugPrint(
+        '[BLE]     autorange CH${channel + 1}: '
+        '${values[_rangeIndex[channel]]} -> ${values[target]}',
+      );
+      _rangeIndex[channel] = target;
+      _rangeChangeInProgress = true;
+      _discardStaleReadings();
+      unawaited(
+        _writeRange(channel).whenComplete(() {
+          _rangeChangeInProgress = false;
+          notifyListeners();
+        }),
+      );
+      return;
+    }
   }
 
   /// Handle app → meter echo (write command acknowledgment).
@@ -897,10 +1026,18 @@ class BleProvider extends ChangeNotifier {
       ch1Value: _ch1Value,
       ch2Value: _ch2Value,
       timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0,
+      ch1Overload: _isOverload(0, _ch1Value),
+      ch2Overload: _isOverload(1, _ch2Value),
     );
     _lastReadingsAt = DateTime.now();
     if (emitCompleteSample) _readingsController.add(_latestReadings!);
     notifyListeners();
+  }
+
+  bool _isOverload(int channel, double value) {
+    final fullScale = rangeMax(channel);
+    if (fullScale == null) return !value.isFinite;
+    return MeterRanges.isOverload(value + _offsets[channel], fullScale);
   }
 
   // --- Packet I/O helpers ---
@@ -992,24 +1129,10 @@ class BleProvider extends ChangeNotifier {
     });
   }
 
-  int _nodeId(String path, int fallback) {
-    final tree = _tree;
-    if (tree == null) {
-      return fallback;
-    }
-    MooshimeterNode? match;
-    void visit(MooshimeterNode node) {
-      if (node.path == path || node.path.endsWith(':$path')) {
-        match = node;
-      }
-      for (final child in node.children) {
-        visit(child);
-      }
-    }
-
-    visit(tree);
-    return match?.id ?? fallback;
-  }
+  /// The id of the node at [path] (for example `CH1:RANGE_I`). Paths must
+  /// be complete: a suffix match would also hit option nodes such as
+  /// `CH1:MAPPING:SHARED` when looking up `SHARED`.
+  int _nodeId(String path, int fallback) => _tree?.find(path)?.id ?? fallback;
 
   // --- Response waiting ---
 

@@ -12,7 +12,7 @@ class SettingsProvider extends ChangeNotifier {
   // --- Settings ---
   bool _autoConnect = true;
   bool _skipUpgrade = false;
-  int _sampleRate = 125;
+  int? _sampleRate;
   int _graphMaxPoints = 300;
   bool _darkMode = false;
   bool _showFloatingReadings = false;
@@ -24,7 +24,10 @@ class SettingsProvider extends ChangeNotifier {
 
   bool get autoConnect => _autoConnect;
   bool get skipUpgrade => _skipUpgrade;
-  int get sampleRate => _sampleRate;
+
+  /// The preferred sample rate in Hz, or null to choose it from the
+  /// measurement (125 Hz for DC, 4 kHz for AC).
+  int? get sampleRate => _sampleRate;
   int get graphMaxPoints => _graphMaxPoints;
   bool get showFloatingReadings => _showFloatingReadings;
   ThemeMode get themeMode => _darkMode ? ThemeMode.dark : ThemeMode.light;
@@ -39,7 +42,10 @@ class SettingsProvider extends ChangeNotifier {
 
     _autoConnect = _prefs?.getBool('autoconnect') ?? true;
     _skipUpgrade = _prefs?.getBool('skip_upgrade') ?? false;
-    _sampleRate = _normalizeSampleRate(_prefs?.getInt('sample_rate_hz') ?? 125);
+    // A new key: the old one always held a fixed rate (125 Hz by default),
+    // which would keep AC measurements from switching to 4 kHz.
+    final storedRate = _prefs?.getInt('sample_rate') ?? 0;
+    _sampleRate = storedRate <= 0 ? null : _normalizeSampleRate(storedRate);
     _graphMaxPoints = _prefs?.getInt('graph_max_points') ?? 300;
     _darkMode = _prefs?.getBool('dark_mode') ?? false;
     _showFloatingReadings = _prefs?.getBool('show_floating_readings') ?? false;
@@ -75,9 +81,9 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  set sampleRate(int value) {
-    _sampleRate = _normalizeSampleRate(value);
-    _prefs?.setInt('sample_rate_hz', _sampleRate);
+  set sampleRate(int? value) {
+    _sampleRate = value == null ? null : _normalizeSampleRate(value);
+    _prefs?.setInt('sample_rate', _sampleRate ?? 0);
     notifyListeners();
   }
 

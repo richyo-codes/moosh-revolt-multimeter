@@ -18,9 +18,10 @@ class RealtimeChart extends StatefulWidget {
   final String ch2Label;
   final GraphStyle style;
 
-  /// Plots CH1 resistance as a two-state open/continuous trace instead of
-  /// ohms.
+  /// Plots a channel's resistance as a two-state open/continuous trace
+  /// instead of ohms.
   final bool ch1Continuity;
+  final bool ch2Continuity;
 
   /// Whether each channel is plotted. A hidden channel keeps its legend
   /// chip, so it can be shown again from the chart itself.
@@ -41,6 +42,7 @@ class RealtimeChart extends StatefulWidget {
     this.ch2Label = 'Voltage (V)',
     this.style = GraphStyle.dualAxis,
     this.ch1Continuity = false,
+    this.ch2Continuity = false,
     this.showCh1 = true,
     this.showCh2 = true,
     this.onCh1VisibilityChanged,
@@ -66,6 +68,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
   ChartAxisRange _range2 = const ChartAxisRange(-10, 10, 5);
   ChartAxisRange? _sharedRange;
   List<LinePoint> _ch1Series = const [];
+  List<LinePoint> _ch2Series = const [];
 
   /// Continuity values are 0 (open) and 1 (continuous); the half-step margin
   /// keeps both levels clear of the plot border.
@@ -84,20 +87,20 @@ class _RealtimeChartState extends State<RealtimeChart> {
   }
 
   void _updateRanges() {
-    _ch1Series = widget.ch1Continuity
-        ? [
-            for (final p in widget.ch1Points)
-              LinePoint(p.x, hasContinuity(p.y) ? 1 : 0),
-          ]
-        : widget.ch1Points;
+    _ch1Series = _series(widget.ch1Points, widget.ch1Continuity);
+    _ch2Series = _series(widget.ch2Points, widget.ch2Continuity);
     final ch1 = _extent(_ch1Series);
-    final ch2 = _extent(widget.ch2Points);
+    final ch2 = _extent(_ch2Series);
     if (widget.ch1Continuity) {
       _range1 = _continuityRange;
     } else if (ch1 != null) {
       _range1 = ChartAxisRange.resolve(ch1.$1, ch1.$2, _range1);
     }
-    if (ch2 != null) _range2 = ChartAxisRange.resolve(ch2.$1, ch2.$2, _range2);
+    if (widget.ch2Continuity) {
+      _range2 = _continuityRange;
+    } else if (ch2 != null) {
+      _range2 = ChartAxisRange.resolve(ch2.$1, ch2.$2, _range2);
+    }
     if (ch1 != null || ch2 != null) {
       _sharedRange = ChartAxisRange.resolve(
         math.min(ch1?.$1 ?? double.infinity, ch2?.$1 ?? double.infinity),
@@ -107,16 +110,26 @@ class _RealtimeChartState extends State<RealtimeChart> {
     }
   }
 
+  /// Overloaded samples (NaN) count as open in a continuity trace.
+  static List<LinePoint> _series(List<LinePoint> points, bool continuity) =>
+      continuity
+      ? [for (final p in points) LinePoint(p.x, hasContinuity(p.y) ? 1 : 0)]
+      : points;
+
   static (double, double)? _extent(List<LinePoint> points) {
-    if (points.isEmpty) return null;
     var min = double.infinity;
     var max = -double.infinity;
     for (final p in points) {
+      if (!p.y.isFinite) continue;
       if (p.y < min) min = p.y;
       if (p.y > max) max = p.y;
     }
-    return (min, max);
+    return min.isFinite ? (min, max) : null;
   }
+
+  /// Overloaded samples are NaN; a null spot leaves a gap in the line.
+  static FlSpot _spot(LinePoint point) =>
+      point.y.isFinite ? FlSpot(point.x, point.y) : FlSpot.nullSpot;
 
   /// The visible time window, shared by every layer so stacked dual-axis
   /// charts scroll in lockstep.
@@ -211,12 +224,13 @@ class _RealtimeChartState extends State<RealtimeChart> {
 
   Widget _ch2Chart({bool rightAxis = false, bool showGrid = true}) => LineChart(
     _singleChartData(
-      widget.ch2Points,
+      _ch2Series,
       widget.ch2Color,
       _range2,
       widget.ch2Label,
       rightAxis: rightAxis,
       showGrid: showGrid,
+      continuity: widget.ch2Continuity,
     ),
     duration: Duration.zero,
   );
@@ -254,7 +268,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
     bool showGrid = false,
     bool continuity = false,
   }) {
-    final spots = points.map((point) => FlSpot(point.x, point.y)).toList();
+    final spots = points.map(_spot).toList();
     final axisTitles = SideTitles(
       showTitles: true,
       reservedSize: 44,
@@ -326,12 +340,8 @@ class _RealtimeChartState extends State<RealtimeChart> {
   }
 
   LineChartData _chartData() {
-    final ch1Spots = _ch1Series
-        .map((point) => FlSpot(point.x, point.y))
-        .toList();
-    final ch2Spots = widget.ch2Points
-        .map((point) => FlSpot(point.x, point.y))
-        .toList();
+    final ch1Spots = _ch1Series.map(_spot).toList();
+    final ch2Spots = _ch2Series.map(_spot).toList();
     final range = _sharedRange ?? _range1;
     final (minX, maxX) = _xWindow;
 
@@ -398,6 +408,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
           LineChartBarData(
             spots: ch2Spots,
             isCurved: false,
+            isStepLineChart: widget.ch2Continuity,
             color: widget.ch2Color,
             barWidth: 2,
             isStrokeCapRound: true,

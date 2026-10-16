@@ -60,8 +60,9 @@ void main() {
     );
     expect(find.byKey(const ValueKey('portrait-meter-layout')), findsOneWidget);
     expect(find.text('MooshRevolt'), findsOneWidget);
-    expect(find.text('3.00000'), findsOneWidget);
-    expect(find.text('1.20000'), findsOneWidget);
+    // Bench-meter format: the 10 A and 60 V ranges fix the decimal point.
+    expect(find.text('0.0030'), findsOneWidget);
+    expect(find.text('1.2000'), findsOneWidget);
   });
 
   testWidgets('stacks readings in a desktop landscape workspace', (
@@ -109,7 +110,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Graph style: Dual axis'), findsOneWidget);
-    expect(find.text('Sample rate: 125 Hz'), findsOneWidget);
+    expect(find.text('Sample rate: Auto (125 Hz)'), findsOneWidget);
     expect(find.text('Save screenshot'), findsOneWidget);
   });
 
@@ -156,11 +157,12 @@ void main() {
     expect(find.text('Voltage AC'), findsOneWidget);
     expect(find.text('Internal Temperature'), findsOneWidget);
     expect(find.text('Current DC'), findsNothing);
-    expect(find.text('Resistance'), findsNothing);
-    expect(find.text('Input range'), findsOneWidget);
-    expect(find.text('Auto (recommended)'), findsOneWidget);
-    expect(find.text('60 V input'), findsOneWidget);
-    expect(find.text('600 V input'), findsOneWidget);
+    // The shared auxiliary modes are offered on either channel.
+    expect(find.text('Resistance'), findsOneWidget);
+    expect(find.text('Range'), findsOneWidget);
+    expect(find.text('Auto · 60 V'), findsOneWidget);
+    expect(find.text('60 V'), findsOneWidget);
+    expect(find.text('600 V'), findsOneWidget);
   });
 
   testWidgets('tracks min/max independently for each channel', (tester) async {
@@ -289,7 +291,7 @@ class FakeBleProvider extends BleProvider {
   }
 
   @override
-  Future<bool> connect(BleDevice device, {int sampleRate = 125}) async {
+  Future<bool> connect(BleDevice device, {int? sampleRate}) async {
     _state = MmConnectionState.connected;
     notifyListeners();
     return true;
@@ -297,4 +299,16 @@ class FakeBleProvider extends BleProvider {
 
   @override
   Future<void> refreshSdLogging() async {}
+
+  /// The range layout of a real Mooshimeter V.1.
+  @override
+  List<double> ranges(int channel) {
+    final input = this.input(channel);
+    return switch (input.shared ?? input.mapping) {
+      'CURRENT' => const [10.0],
+      'VOLTAGE' => const [60.0, 600.0],
+      'RESISTANCE' => const [1e3, 1e4, 1e5, 1e6, 1e7],
+      _ => const [1.2],
+    };
+  }
 }
