@@ -15,6 +15,7 @@ class SettingsProvider extends ChangeNotifier {
   int? _sampleRate;
   Duration _chartWindow = const Duration(minutes: 1);
   ThemeMode _themeMode = ThemeMode.system;
+  TemperatureUnit _temperatureUnit = TemperatureUnit.celsius;
   bool _showFloatingReadings = false;
 
   // --- Meter screen preferences, restored on the next start ---
@@ -49,6 +50,7 @@ class SettingsProvider extends ChangeNotifier {
   Duration get chartWindow => _chartWindow;
   bool get showFloatingReadings => _showFloatingReadings;
   ThemeMode get themeMode => _themeMode;
+  TemperatureUnit get temperatureUnit => _temperatureUnit;
 
   bool showChannel(int channel) => _showChannel[channel];
   ChannelMode channelMode(int channel) => _channelMode[channel];
@@ -103,6 +105,12 @@ class SettingsProvider extends ChangeNotifier {
           : ThemeMode.system,
     );
     _showFloatingReadings = _prefs?.getBool('show_floating_readings') ?? false;
+    _temperatureUnit = _byName(
+      TemperatureUnit.values,
+      _prefs?.getString('temperature_unit'),
+      TemperatureUnit.celsius,
+    );
+    DisplayPreferences.temperature = _temperatureUnit;
     for (final channel in const [0, 1]) {
       final key = 'ch${channel + 1}';
       _showChannel[channel] =
@@ -180,6 +188,13 @@ class SettingsProvider extends ChangeNotifier {
   set showFloatingReadings(bool value) {
     _showFloatingReadings = value;
     _prefs?.setBool('show_floating_readings', value);
+    notifyListeners();
+  }
+
+  set temperatureUnit(TemperatureUnit value) {
+    _temperatureUnit = value;
+    DisplayPreferences.temperature = value;
+    _prefs?.setString('temperature_unit', value.name);
     notifyListeners();
   }
 

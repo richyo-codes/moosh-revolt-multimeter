@@ -95,4 +95,19 @@ void main() {
     expect(hasContinuity(1265.95), isFalse);
     expect(hasContinuity(double.nan), isFalse);
   });
+
+  test('shows internal temperature in the chosen unit', () {
+    addTearDown(() => DisplayPreferences.temperature = TemperatureUnit.celsius);
+    expect(
+      ChannelMode.internalTemperature.toDisplay(298.15),
+      closeTo(25, 1e-9),
+    );
+    DisplayPreferences.temperature = TemperatureUnit.fahrenheit;
+    expect(ChannelMode.internalTemperature.units, '°F');
+    expect(
+      ChannelMode.internalTemperature.toDisplay(298.15),
+      closeTo(77, 1e-9),
+    );
+    expect(ChannelMode.voltage.toDisplay(12), 12);
+  });
 }

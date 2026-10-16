@@ -14,6 +14,27 @@ const continuityThresholdOhms = 50.0;
 bool hasContinuity(double ohms) =>
     ohms.isFinite && ohms.abs() < continuityThresholdOhms;
 
+/// The unit temperatures are shown in.
+enum TemperatureUnit {
+  celsius('°C'),
+  fahrenheit('°F');
+
+  const TemperatureUnit(this.symbol);
+  final String symbol;
+
+  /// Converts the meter's kelvin reading.
+  double fromKelvin(double kelvin) => switch (this) {
+    celsius => kelvin - 273.15,
+    fahrenheit => (kelvin - 273.15) * 9 / 5 + 32,
+  };
+}
+
+/// Display preferences the measurement model needs. [SettingsProvider]
+/// keeps them in step with the user's choice.
+abstract final class DisplayPreferences {
+  static TemperatureUnit temperature = TemperatureUnit.celsius;
+}
+
 /// What a channel measures, mapped onto the meter's named inputs.
 enum ChannelMode {
   current('Current DC', MeterInput(mapping: 'CURRENT')),
@@ -61,14 +82,15 @@ enum ChannelMode {
   /// The unit shown to the user. The meter reports temperature in kelvin.
   String get units => switch (this) {
     resistance => 'Ω',
-    internalTemperature => '°C',
+    internalTemperature => DisplayPreferences.temperature.symbol,
     current || currentAc => 'A',
     _ => 'V',
   };
 
   /// Converts a value in the meter's native unit to [units].
-  double toDisplay(double native) =>
-      this == internalTemperature ? native - 273.15 : native;
+  double toDisplay(double native) => this == internalTemperature
+      ? DisplayPreferences.temperature.fromKelvin(native)
+      : native;
 
   /// Whether a reading in [units] is invalid although the input is not
   /// saturated. A resistance well below zero means an external voltage is

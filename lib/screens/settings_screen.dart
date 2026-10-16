@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/services/prometheus_exporter.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/screens/about_screen.dart';
@@ -74,6 +75,22 @@ class SettingsScreen extends StatelessWidget {
                   showSelectedIcon: false,
                   onSelectionChanged: (selection) =>
                       settings.themeMode = selection.single,
+                ),
+              ),
+              ListTile(
+                title: const Text('Temperature'),
+                subtitle: const Text(
+                  'Unit for the meter\'s internal temperature',
+                ),
+                trailing: SegmentedButton<TemperatureUnit>(
+                  segments: [
+                    for (final unit in TemperatureUnit.values)
+                      ButtonSegment(value: unit, label: Text(unit.symbol)),
+                  ],
+                  selected: {settings.temperatureUnit},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      settings.temperatureUnit = selection.single,
                 ),
               ),
               SwitchListTile(

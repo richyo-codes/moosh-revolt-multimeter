@@ -711,7 +711,7 @@ class _DeviceScreenState extends State<DeviceScreen>
       dc: ChannelMode.diode,
     ),
     const _Quantity(
-      symbol: '°C',
+      symbol: '°',
       label: 'Temperature',
       hint: 'Temperature inside the meter',
       dc: ChannelMode.internalTemperature,
@@ -1057,7 +1057,7 @@ class _DeviceScreenState extends State<DeviceScreen>
   String _rangeLabel(double fullScale, ChannelMode mode) {
     final display = mode.toDisplay(fullScale);
     if (mode == ChannelMode.internalTemperature) {
-      return '${display.round()} °C';
+      return '${display.round()} ${mode.units}';
     }
     // Names a range like a meter's dial: "1 kΩ", "1 MΩ".
     final scale = SiScale.forValue(display);

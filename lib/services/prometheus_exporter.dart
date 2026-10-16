@@ -181,7 +181,12 @@ String renderPrometheusMetrics(BleProvider provider, {int scrapes = 0}) {
         'channel="${channel + 1}",mode="${mode.name}",'
         'analysis="${quantity.analysis}"';
     if (readings != null) {
-      final value = provider.displayValue(readings, channel);
+      // Prometheus wants base units: temperature stays in Celsius whatever
+      // the display preference is.
+      final shown = provider.displayValue(readings, channel);
+      final value = mode == ChannelMode.internalTemperature && !shown.isNaN
+          ? TemperatureUnit.celsius.fromKelvin(readings.value(channel))
+          : shown;
       overload.add(
         'mooshimeter_overload{channel="${channel + 1}"} '
         '${value.isNaN ? 1 : 0}',

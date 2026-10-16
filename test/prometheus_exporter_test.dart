@@ -79,6 +79,17 @@ void main() {
     expect(text, contains('mooshimeter_resistance_ohms{channel="2"'));
   });
 
+  test('exports Celsius while the display shows Fahrenheit', () async {
+    DisplayPreferences.temperature = TemperatureUnit.fahrenheit;
+    addTearDown(() => DisplayPreferences.temperature = TemperatureUnit.celsius);
+    final provider = _Provider(
+      DeviceReadings(ch1Value: 298.15, ch2Value: 1, timestamp: 0),
+    );
+    await provider.setInput(0, ChannelMode.internalTemperature.input);
+    final text = renderPrometheusMetrics(provider);
+    expect(text, matches(RegExp(r'temperature_celsius\{[^}]*\} 25\.0')));
+  });
+
   test('omits stale and overloaded readings', () {
     final overloaded = _Provider(
       DeviceReadings(
