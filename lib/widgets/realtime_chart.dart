@@ -439,7 +439,11 @@ class _RealtimeChartState extends State<RealtimeChart> {
 
   /// Tick spacing that gives about five labels across the window.
   static double _timeStep(double span) {
-    const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+    // Sub-second steps serve the waveform view's millisecond windows.
+    const steps = [
+      0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, //
+      1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600,
+    ];
     final target = span / 5;
     return steps.firstWhere((s) => s >= target, orElse: () => 3600).toDouble();
   }
@@ -478,6 +482,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
   String _timeLabel(double x, double step) {
     String two(int n) => n.toString().padLeft(2, '0');
     final origin = widget.timeOrigin;
+    if (origin == null && step < 1) return '${(x * 1000).round()} ms';
     if (origin == null) {
       final seconds = x.round();
       return seconds >= 60

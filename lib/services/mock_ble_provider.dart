@@ -65,6 +65,24 @@ class MockBleProvider extends BleProvider {
   @override
   String get sdCardStatusLabel => 'Ready (simulated)';
 
+  /// A simulated mains-like buffer in waveform mode: 50 Hz sine current and
+  /// voltage with a little ripple, at the current sample rate.
+  @override
+  WaveformCapture? get latestWaveform {
+    if (!waveform) return null;
+    final rate = sampleRateHz;
+    final n = rate >= 4000 ? 256 : 64;
+    List<double> wave(double amplitude, double phase, double dc) => [
+      for (var i = 0; i < n; i++)
+        dc +
+            amplitude * math.sin(2 * math.pi * 50 * i / rate + phase + _time) +
+            amplitude * 0.04 * math.sin(2 * math.pi * 150 * i / rate),
+    ];
+    final current = input(0).isRms ? wave(2.3, 0.6, 0) : wave(0.3, 0, 2.35);
+    final voltage = input(1).isRms ? wave(325, 0, 0) : wave(0.08, 0.8, 14.24);
+    return WaveformCapture(ch1: current, ch2: voltage, samplePeriod: 1 / rate);
+  }
+
   @override
   List<double> ranges(int channel) {
     final input = this.input(channel);

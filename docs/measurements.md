@@ -88,6 +88,19 @@ valid from 0 to 500 °C above the meter's own temperature. Like the original
 Mooshimeter app, it treats the meter's internal temperature as the cold
 junction, so keep the thermocouple's connection near the meter.
 
+## Waveform view
+
+**Show waveform** in the menu turns the chart into a simple oscilloscope. The
+meter then streams each channel's raw sample buffer instead of its averaged
+value, and the chart shows the latest buffer against time in milliseconds:
+64 samples over 512 ms at 125 Hz, or 256 samples over 64 ms at 4 kHz, which
+covers about three mains cycles.
+
+The readings, tones, recording and exporter keep working: each value is the
+mean (DC) or RMS (AC) of its buffer. The meter sends buffer samples with
+fewer bits than its averaged values (8 bits at 125 Hz on a V.1), so readings
+are coarser in this view. Select **Show reading history** to return.
+
 ## Recording
 
 Select the red **Record** button in the toolbar to write every reading the

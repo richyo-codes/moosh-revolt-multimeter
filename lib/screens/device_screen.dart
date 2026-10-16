@@ -283,6 +283,13 @@ class _DeviceScreenState extends State<DeviceScreen>
                             '${formatChartWindow(settings.chartWindow)}',
                       ),
                       _menuItem(
+                        'waveform',
+                        Icons.ssid_chart,
+                        provider.waveform
+                            ? 'Show reading history'
+                            : 'Show waveform',
+                      ),
+                      _menuItem(
                         'math',
                         Icons.functions,
                         'Math: ${settings.mathFunction.label}',
@@ -544,11 +551,13 @@ class _DeviceScreenState extends State<DeviceScreen>
           }),
         );
         final continuityChannel = _continuityGraph ? _continuityChannel : null;
+        final waveform = provider.waveform;
         final chart = Padding(
           padding: const EdgeInsets.all(12),
           child: RealtimeChart(
-            ch1Points: _ch1Points,
-            ch2Points: _ch2Points,
+            key: ValueKey(waveform ? 'waveform-chart' : 'history-chart'),
+            ch1Points: waveform ? _waveformPoints(provider, 0) : _ch1Points,
+            ch2Points: waveform ? _waveformPoints(provider, 1) : _ch2Points,
             showCh1: _showCh1,
             showCh2: _showCh2,
             onCh1VisibilityChanged: (visible) =>
@@ -557,9 +566,10 @@ class _DeviceScreenState extends State<DeviceScreen>
                 setState(() => _showCh2 = visible),
             ch1Label: _chartLabel(0, continuity: continuityChannel == 0),
             ch2Label: _chartLabel(1, continuity: continuityChannel == 1),
-            ch1Continuity: continuityChannel == 0,
-            ch2Continuity: continuityChannel == 1,
-            timeOrigin: _graphStartTimestamp,
+            ch1Continuity: !waveform && continuityChannel == 0,
+            ch2Continuity: !waveform && continuityChannel == 1,
+            // The waveform's time axis is milliseconds within one buffer.
+            timeOrigin: waveform ? null : _graphStartTimestamp,
             style: _graphStyle,
           ),
         );
@@ -1795,6 +1805,9 @@ class _DeviceScreenState extends State<DeviceScreen>
       case 'math':
         unawaited(_showMathPicker());
         break;
+      case 'waveform':
+        unawaited(_bleProvider.setWaveform(!_bleProvider.waveform));
+        break;
       case 'clear-graph':
         _clearGraph();
         break;
@@ -1831,6 +1844,23 @@ class _DeviceScreenState extends State<DeviceScreen>
       ),
     );
     if (style != null && mounted) setState(() => _graphStyle = style);
+  }
+
+  /// The latest raw buffer of [channel] in its display unit, against time
+  /// in seconds from the start of the buffer.
+  List<LinePoint> _waveformPoints(BleProvider provider, int channel) {
+    final capture = provider.latestWaveform;
+    if (capture == null) return const [];
+    final mode = _mode(channel);
+    final offset = provider.offset(channel);
+    final samples = capture.channel(channel);
+    return [
+      for (var i = 0; i < samples.length; i++)
+        LinePoint(
+          i * capture.samplePeriod,
+          mode.toDisplay(samples[i] - offset),
+        ),
+    ];
   }
 
   static const _mathColor = Colors.purple;

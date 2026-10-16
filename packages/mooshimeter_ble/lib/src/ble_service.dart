@@ -121,6 +121,44 @@ class DeviceReadings {
       'DeviceReadings(ch1: $ch1Value, ch2: $ch2Value, ts: $timestamp)';
 }
 
+/// One buffer of raw samples per channel, in the meter's native units.
+class WaveformCapture {
+  WaveformCapture({
+    required this.ch1,
+    required this.ch2,
+    required this.samplePeriod,
+  });
+
+  final List<double> ch1;
+  final List<double> ch2;
+
+  /// Seconds between samples.
+  final double samplePeriod;
+
+  List<double> channel(int channel) => channel == 0 ? ch1 : ch2;
+}
+
+/// Decodes a CHx:BUF payload (after its 2-byte length) into values: signed
+/// little-endian samples of [bitsPerSample] bits, scaled by [lsbToNative].
+List<double> decodeSampleBuffer(
+  Uint8List data,
+  int bitsPerSample,
+  double lsbToNative,
+) {
+  final bytes = math.max(1, bitsPerSample ~/ 8);
+  final samples = <double>[];
+  for (var i = 0; i + bytes <= data.length; i += bytes) {
+    var raw = 0;
+    for (var b = bytes - 1; b >= 0; b--) {
+      raw = (raw << 8) | data[i + b];
+    }
+    final sign = 1 << (bytes * 8 - 1);
+    if (raw & sign != 0) raw -= sign << 1;
+    samples.add(raw * lsbToNative);
+  }
+  return samples;
+}
+
 /// BLE connection state.
 enum MmConnectionState { disconnected, connecting, connected, disconnecting }
 
@@ -163,6 +201,14 @@ class BleProvider extends ChangeNotifier {
   int _sampleRateIndex = 0;
   int _bufferDepth = 64;
   bool _rangeChangeInProgress = false;
+
+  // Waveform (buffer) mode: the meter streams raw sample buffers instead of
+  // averaged values; the app derives the readings from them.
+  bool _waveform = false;
+  final List<int> _bufferBits = [24, 24];
+  final List<double> _bufferScale = [0, 0];
+  final List<List<double>?> _buffers = [null, null];
+  WaveformCapture? _latestWaveform;
 
   // Automatic reconnection after an unexpected link loss.
   BleDevice? _lastDevice;
@@ -238,6 +284,100 @@ class BleProvider extends ChangeNotifier {
       _readingsController.add(readings);
   double get battery => _battery;
   bool get isConnected => _state == MmConnectionState.connected;
+
+  /// Whether the meter streams raw sample buffers (oscilloscope view).
+  bool get waveform => _waveform;
+
+  /// The latest pair of sample buffers in waveform mode.
+  WaveformCapture? get latestWaveform => _latestWaveform;
+
+  /// Switches waveform mode on or off. Readings keep flowing: in waveform
+  /// mode each channel's value is the mean (DC) or RMS (AC) of its buffer.
+  Future<void> setWaveform(bool enabled) async {
+    if (_waveform == enabled) return;
+    _waveform = enabled;
+    _latestWaveform = null;
+    _buffers.fillRange(0, 2, null);
+    if (_deviceId != null && _handshakeDone) {
+      _discardStaleReadings();
+      for (final channel in const [0, 1]) {
+        await _writeChooserByName(
+          'CH${channel + 1}:ANALYSIS',
+          _analysisFor(channel),
+        );
+        await _readBufferFormat(channel);
+      }
+    }
+    notifyListeners();
+  }
+
+  String _analysisFor(int channel) =>
+      _waveform ? 'BUFFER' : _inputs[channel].analysis;
+
+  /// Reads how [channel]'s buffer encodes samples; the scale follows the
+  /// active range, so it is read again after every range change.
+  Future<void> _readBufferFormat(int channel) async {
+    if (!_waveform) return;
+    final prefix = 'CH${channel + 1}';
+    final bits = await _readNode(
+      '$prefix:BUF_BPS',
+      channel == 0 ? ConfigNode.ch1BufBps : ConfigNode.ch2BufBps,
+    );
+    final scale = await _readNode(
+      '$prefix:BUF_LSB2NATIVE',
+      channel == 0 ? ConfigNode.ch1BufLsb2Native : ConfigNode.ch2BufLsb2Native,
+    );
+    if (bits != null && bits.isNotEmpty) _bufferBits[channel] = bits[0];
+    if (scale != null && scale.length >= 4) {
+      _bufferScale[channel] = ByteData.view(
+        scale.buffer,
+        scale.offsetInBytes,
+      ).getFloat32(0, Endian.little);
+    }
+  }
+
+  /// Stores one channel's buffer; once both have arrived, publishes the
+  /// capture and the readings derived from it.
+  void _handleBuffer(int channel, Uint8List payload) {
+    if (!_waveform || payload.length < 2) return;
+    // A buffer can arrive before its scale has been read; read it again
+    // rather than publishing zeros.
+    if (_bufferScale[channel] == 0) {
+      unawaited(_readBufferFormat(channel));
+      return;
+    }
+    final data = Uint8List.sublistView(payload, 2);
+    _buffers[channel] = decodeSampleBuffer(
+      data,
+      _bufferBits[channel],
+      _bufferScale[channel],
+    );
+    final ch1 = _buffers[0];
+    final ch2 = _buffers[1];
+    if (ch1 == null || ch2 == null) return;
+    _buffers.fillRange(0, 2, null);
+    _latestWaveform = WaveformCapture(
+      ch1: ch1,
+      ch2: ch2,
+      samplePeriod: 1 / sampleRateHz,
+    );
+    _ch1Value = _summarize(0, ch1);
+    _ch2Value = _summarize(1, ch2);
+    _updateReadings(emitCompleteSample: true);
+    _applyAutorange();
+  }
+
+  /// The value the meter would report for [samples]: the mean for DC, the
+  /// RMS for AC, minus the channel's zero offset.
+  double _summarize(int channel, List<double> samples) {
+    if (samples.isEmpty) return double.nan;
+    final value = _inputs[channel].isRms
+        ? math.sqrt(
+            samples.fold<double>(0, (sum, x) => sum + x * x) / samples.length,
+          )
+        : samples.fold<double>(0, (sum, x) => sum + x) / samples.length;
+    return value - _offsets[channel];
+  }
 
   /// Whether a dropped link is being re-established automatically.
   bool get isReconnecting => _reconnecting;
@@ -726,7 +866,7 @@ class BleProvider extends ChangeNotifier {
       await _writeChooserByName('SHARED', input.shared!);
     }
     await _writeChooserByName('$prefix:MAPPING', input.mapping);
-    await _writeChooserByName('$prefix:ANALYSIS', input.analysis);
+    await _writeChooserByName('$prefix:ANALYSIS', _analysisFor(channel));
     await _writeRange(channel);
   }
 
@@ -736,6 +876,7 @@ class BleProvider extends ChangeNotifier {
       channel == 0 ? ConfigNode.ch1RangeI : ConfigNode.ch2RangeI,
       Uint8List.fromList([_rangeIndex[channel]]),
     );
+    await _readBufferFormat(channel);
   }
 
   Future<void> _applySampling() async {
@@ -1020,6 +1161,18 @@ class BleProvider extends ChangeNotifier {
 
   /// Handle meter → app data: readings, battery, errors.
   void _handleMeterRead(int nodeId, Uint8List payload, int seqNum) {
+    if (nodeId == _nodeId('CH1:BUF', ConfigNode.ch1Buf)) {
+      _handleBuffer(0, payload);
+      return;
+    }
+    if (nodeId == _nodeId('CH2:BUF', ConfigNode.ch2Buf)) {
+      _handleBuffer(1, payload);
+      return;
+    }
+    // In waveform mode the readings come from the buffers.
+    if (_waveform && (nodeId == _ch1ValueNodeId || nodeId == _ch2ValueNodeId)) {
+      return;
+    }
     if (nodeId == _ch1ValueNodeId) {
       if (payload.length >= 4) {
         _ch1Value = ByteData.view(

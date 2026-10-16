@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 
@@ -116,5 +118,23 @@ void main() {
     final provider = BleProvider();
     const resistance = MeterInput(mapping: 'SHARED', shared: 'RESISTANCE');
     expect(provider.canUseInput(0, resistance), isTrue);
+  });
+
+  test('decodes signed little-endian sample buffers', () {
+    // 8-bit: 0x7A = 122, 0xD9 = -39 (as sent by a V.1 at 125 Hz).
+    expect(decodeSampleBuffer(Uint8List.fromList([122, 217]), 8, 2), [
+      244,
+      -78,
+    ]);
+    // 16-bit: 0x0100 = 256, 0xFFFF = -1.
+    expect(decodeSampleBuffer(Uint8List.fromList([0, 1, 255, 255]), 16, 1), [
+      256,
+      -1,
+    ]);
+    // 24-bit: 0x7FFFFF and 0x800000.
+    expect(
+      decodeSampleBuffer(Uint8List.fromList([255, 255, 127, 0, 0, 128]), 24, 1),
+      [8388607, -8388608],
+    );
   });
 }
