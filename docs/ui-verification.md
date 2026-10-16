@@ -20,6 +20,7 @@ flutter test
 | Signal unavailable | 390 × 844 | RSSI is omitted while battery and sample status remain visible |
 | Appearance | Settings screen | Theme offers System, Light and Dark under Settings → Appearance |
 | Resizable layout | 1400 × 800 | Dragging the divider resizes, clamps to 15–70%, and double-click resets |
+| Channel configuration | 1280 × 800 / 390 × 844 | Docks as a non-modal side panel that Esc closes; opens as a full-screen page on phones |
 
 The test output itself is the machine-readable pass/fail report. Use
 `flutter test --reporter expanded` when attaching an explicit test log to a

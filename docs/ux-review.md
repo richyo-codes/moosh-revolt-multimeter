@@ -137,13 +137,18 @@ proposals.
 - **Fix:** Meter settings now uses a chip icon. "Tune" stays with the
   channels.
 
-### 15. Channel sheet covered the reading being adjusted — Fixed
+### 15. Channel configuration was a modal bottom sheet — Fixed
 
-- **Problem:** The sheet was always 85% high, mostly empty, and hid the live
-  value.
-- **Why it matters:** Users changing a range or mode got no feedback.
-- **Fix:** The sheet sizes to its content and shows the live reading in its
-  header.
+- **Problem:** A bottom sheet rose over the meter, covered the reading being
+  adjusted, and listed seven long mode names as a cloud of chips.
+- **Why it matters:** Users changing a range or mode got no feedback. On
+  desktop, a bottom sheet is a phone pattern at an arbitrary width.
+- **Fix:** On wide windows the configuration docks as a non-modal side
+  panel, so the readings and chart stay live beside it. It closes with ✕ or
+  Esc, and the card's tune button toggles it. Phones get a full-screen page.
+  Modes are dial-style tiles (A, V, mV, Ω, diode, °C) with a separate DC/AC
+  choice. The live reading sits at the top, followed by range, zero,
+  continuity and display options.
 
 ### 16. Saved files were hard to find — Fixed
 

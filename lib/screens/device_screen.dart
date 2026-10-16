@@ -35,6 +35,9 @@ class DeviceScreen extends StatefulWidget {
 class _DeviceScreenState extends State<DeviceScreen>
     with WidgetsBindingObserver {
   late final BleProvider _bleProvider;
+
+  /// The channel whose configuration is docked beside the meter, if any.
+  int? _configChannel;
   late final SettingsProvider _settingsProvider;
 
   final List<LinePoint> _ch1Points = [];
@@ -296,17 +299,19 @@ class _DeviceScreenState extends State<DeviceScreen>
               ],
             ),
             body: isConnected
-                ? _buildReadingsTab(
-                    isConnected: true,
-                    ch1Value: ch1Value,
-                    ch2Value: ch2Value,
-                    rssi: rssi,
-                    battery: battery,
-                    ch1OutOfRange: ch1OutOfRange,
-                    ch2OutOfRange: ch2OutOfRange,
-                    provider: provider,
-                    showFloatingReadings: settings.showFloatingReadings,
-                    hasFreshReadings: hasFreshReadings,
+                ? _withConfigPanel(
+                    _buildReadingsTab(
+                      isConnected: true,
+                      ch1Value: ch1Value,
+                      ch2Value: ch2Value,
+                      rssi: rssi,
+                      battery: battery,
+                      ch1OutOfRange: ch1OutOfRange,
+                      ch2OutOfRange: ch2OutOfRange,
+                      provider: provider,
+                      showFloatingReadings: settings.showFloatingReadings,
+                      hasFreshReadings: hasFreshReadings,
+                    ),
                   )
                 : _buildDisconnectedState(provider.state),
           ),
@@ -446,8 +451,8 @@ class _DeviceScreenState extends State<DeviceScreen>
             _ch2MinMaxTracking = enabled;
             _resetCh2MinMax();
           }),
-          onCh1Configure: () => _showChannelConfigurator(0, provider),
-          onCh2Configure: () => _showChannelConfigurator(1, provider),
+          onCh1Configure: () => _openChannelConfig(0),
+          onCh2Configure: () => _openChannelConfig(1),
           ch1PossiblyFloating: _isPossiblyFloating(_ch1Points, 0.0001),
           ch2PossiblyFloating: _isPossiblyFloating(_ch2Points, 0.005),
           ch1Units: _mode(0).units,
@@ -599,181 +604,350 @@ class _DeviceScreenState extends State<DeviceScreen>
     );
   }
 
-  Future<void> _showChannelConfigurator(
-    int channel,
-    BleProvider provider,
-  ) async {
-    final channelName = 'CH${channel + 1}';
-    final otherName = 'CH${2 - channel}';
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        // Size to the content, so short configurations do not leave a
-        // mostly empty sheet covering the reading being adjusted.
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            // Rebuild on provider changes too: auto-ranging and the zero
-            // offset change while the sheet is open.
-            child: ListenableBuilder(
-              listenable: provider,
-              builder: (context, _) => StatefulBuilder(
-                builder: (context, setSheetState) {
-                  void update(VoidCallback change) {
-                    setState(change);
-                    setSheetState(() {});
-                  }
+  /// Width from which channel configuration docks beside the meter instead
+  /// of opening as a full-screen page.
+  static const _dockedConfigMinWidth = 900.0;
+  static const _configPanelWidth = 380.0;
 
-                  final theme = Theme.of(context);
-                  final mode = _mode(channel);
-                  final isVisible = channel == 0 ? _showCh1 : _showCh2;
-                  final sharedBlocked = ChannelMode.forChannel(
-                    channel,
-                  ).any((m) => !provider.canUseInput(channel, m.input));
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '$channelName configuration',
-                              style: theme.textTheme.titleLarge,
-                            ),
-                          ),
-                          // Live feedback while changing mode and range.
-                          Text(
-                            _liveReading(provider, channel),
-                            key: ValueKey('sheet-live-reading-$channel'),
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontFamily: 'monospace',
-                              color: channel == 0 ? Colors.red : Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        channel == 0
-                            ? 'Current input (A jack) or the shared auxiliary input'
-                            : 'Voltage input (V jack) or the shared auxiliary input',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Show channel'),
-                        subtitle: const Text(
-                          'Include this channel in readings and graph',
-                        ),
-                        value: isVisible,
-                        onChanged: (visible) => update(() {
-                          if (channel == 0) {
-                            _showCh1 = visible;
-                          } else {
-                            _showCh2 = visible;
-                          }
-                        }),
-                      ),
-                      const Divider(),
-                      Text('Measurement', style: theme.textTheme.titleSmall),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final candidate in ChannelMode.forChannel(
-                            channel,
-                          ))
-                            ChoiceChip(
-                              label: Text(candidate.label),
-                              selected: mode == candidate,
-                              tooltip:
-                                  provider.canUseInput(channel, candidate.input)
-                                  ? null
-                                  : 'The shared input is in use by $otherName',
-                              onSelected:
-                                  provider.canUseInput(channel, candidate.input)
-                                  ? (selected) async {
-                                      if (!selected) return;
-                                      await _setChannelMode(
-                                        channel,
-                                        candidate,
-                                        provider,
-                                      );
-                                      if (sheetContext.mounted) {
-                                        setSheetState(() {});
-                                      }
-                                    }
-                                  : null,
-                            ),
-                        ],
-                      ),
-                      if (sharedBlocked) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Auxiliary voltage, resistance and diode share one '
-                          'input, which $otherName is using.',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      Text('Range', style: theme.textTheme.titleSmall),
-                      const SizedBox(height: 8),
-                      _rangeSelector(channel, provider, update),
-                      const SizedBox(height: 12),
-                      _zeroControl(channel, provider),
-                      if (mode == ChannelMode.resistance) ...[
-                        const Divider(),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          secondary: Icon(
-                            _continuityToneEnabled
-                                ? Icons.volume_up
-                                : Icons.volume_off,
-                          ),
-                          title: const Text('Continuity tone'),
-                          subtitle: Text(
-                            'Beep below ${continuityThresholdOhms.round()} Ω. '
-                            'Holds the 1 kΩ range so the beep follows the '
-                            'probes without waiting for auto-ranging.',
-                          ),
-                          value: _continuityToneEnabled,
-                          onChanged: (enabled) {
-                            update(() => _setContinuityToneEnabled(enabled));
-                            unawaited(
-                              provider.setRange(channel, enabled ? 0 : null),
-                            );
-                          },
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          secondary: const Icon(Icons.show_chart),
-                          title: const Text('Continuity graph'),
-                          subtitle: const Text(
-                            'Plot open or continuous instead of ohms',
-                          ),
-                          value: _continuityGraph,
-                          onChanged: (enabled) =>
-                              update(() => _continuityGraph = enabled),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
-            ),
+  /// Opens [channel]'s configuration. On wide windows it docks as a
+  /// non-modal side panel, so the readings and chart stay visible and live
+  /// while settings change; tapping the same channel again closes it. On
+  /// phones it opens as a full-screen page.
+  void _openChannelConfig(int channel) {
+    if (MediaQuery.sizeOf(context).width >= _dockedConfigMinWidth) {
+      setState(
+        () => _configChannel = _configChannel == channel ? null : channel,
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (routeContext) => ListenableBuilder(
+          // Mode, range and offset live in the provider; display options
+          // in settings. Both notify, so the page stays current.
+          listenable: Listenable.merge([_bleProvider, _settingsProvider]),
+          builder: (context, _) => Scaffold(
+            appBar: AppBar(title: Text('CH${channel + 1} configuration')),
+            body: SafeArea(child: _channelConfig(channel)),
           ),
         ),
       ),
+    );
+  }
+
+  /// Places the docked configuration panel beside [main] when it is open.
+  Widget _withConfigPanel(Widget main) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final channel = _configChannel;
+        if (channel == null || constraints.maxWidth < _dockedConfigMinWidth) {
+          return main;
+        }
+        void close() => setState(() => _configChannel = null);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: main),
+            const VerticalDivider(width: 1),
+            SizedBox(
+              width: _configPanelWidth,
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.escape): close,
+                },
+                child: Focus(
+                  autofocus: true,
+                  child: Material(
+                    key: const ValueKey('channel-config-panel'),
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    child: _channelConfig(channel, onClose: close),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// What a channel can measure, grouped like a meter's dial: one tile per
+  /// quantity, with DC/AC as a separate choice where it applies.
+  List<_Quantity> _quantitiesFor(int channel) => [
+    if (channel == 0)
+      const _Quantity(
+        symbol: 'A',
+        label: 'Current',
+        hint: 'A jack, up to 10 A',
+        dc: ChannelMode.current,
+        ac: ChannelMode.currentAc,
+      )
+    else
+      const _Quantity(
+        symbol: 'V',
+        label: 'Voltage',
+        hint: 'V jack, up to 600 V',
+        dc: ChannelMode.voltage,
+        ac: ChannelMode.voltageAc,
+      ),
+    const _Quantity(
+      symbol: 'mV',
+      label: 'Aux voltage',
+      hint: 'Shared input, up to 1.2 V',
+      dc: ChannelMode.auxiliaryVoltageDc,
+      ac: ChannelMode.auxiliaryVoltageAc,
+    ),
+    const _Quantity(
+      symbol: 'Ω',
+      label: 'Resistance',
+      hint: 'Shared input, 1 kΩ to 10 MΩ',
+      dc: ChannelMode.resistance,
+    ),
+    const _Quantity(
+      symbol: '▷|',
+      label: 'Diode',
+      hint: 'Shared input, forward voltage up to 1.2 V',
+      dc: ChannelMode.diode,
+    ),
+    const _Quantity(
+      symbol: '°C',
+      label: 'Temperature',
+      hint: 'Temperature inside the meter',
+      dc: ChannelMode.internalTemperature,
+    ),
+  ];
+
+  Widget _channelConfig(int channel, {VoidCallback? onClose}) {
+    final provider = _bleProvider;
+    final theme = Theme.of(context);
+    final color = channel == 0 ? Colors.red : Colors.blue;
+    final mode = _mode(channel);
+    final otherName = 'CH${2 - channel}';
+    final quantities = _quantitiesFor(channel);
+    final selected = quantities.firstWhere(
+      (q) => q.dc == mode || q.ac == mode,
+      orElse: () => quantities.first,
+    );
+    final sharedBlocked = quantities.any(
+      (q) => !provider.canUseInput(channel, q.dc.input),
+    );
+
+    Widget section(String title, List<Widget> children) => Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...children,
+        ],
+      ),
+    );
+
+    return ListView(
+      key: ValueKey('channel-config-$channel'),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        if (onClose != null)
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'CH${channel + 1} configuration',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Close (Esc)',
+                onPressed: onClose,
+              ),
+            ],
+          ),
+        // Live feedback: the value updates while mode, range and zero
+        // change.
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(
+            color: color.withAlpha(20),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withAlpha(70)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                mode.label,
+                style: theme.textTheme.labelMedium?.copyWith(color: color),
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _liveReading(provider, channel),
+                  key: ValueKey('sheet-live-reading-$channel'),
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    color: color,
+                  ),
+                ),
+              ),
+              if (_rangeStatus(provider, channel) case final range?)
+                Text(range, style: theme.textTheme.bodySmall),
+            ],
+          ),
+        ),
+        section('Measure', [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const spacing = 8.0;
+              final tileWidth = (constraints.maxWidth - 2 * spacing) / 3;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final quantity in quantities)
+                    SizedBox(
+                      width: tileWidth,
+                      child: _QuantityTile(
+                        quantity: quantity,
+                        selected: identical(quantity, selected),
+                        color: color,
+                        disabledReason:
+                            provider.canUseInput(channel, quantity.dc.input)
+                            ? null
+                            : 'The shared input is in use by $otherName',
+                        onTap: () => unawaited(
+                          _setChannelMode(
+                            channel,
+                            // Keep AC when moving between AC-capable inputs.
+                            mode.input.isRms && quantity.ac != null
+                                ? quantity.ac!
+                                : quantity.dc,
+                            provider,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(selected.hint, style: theme.textTheme.bodySmall),
+          if (selected.ac case final ac?) ...[
+            const SizedBox(height: 12),
+            SegmentedButton<ChannelMode>(
+              segments: [
+                ButtonSegment(value: selected.dc, label: const Text('DC')),
+                ButtonSegment(value: ac, label: const Text('AC (RMS)')),
+              ],
+              selected: {mode},
+              onSelectionChanged: (choice) =>
+                  unawaited(_setChannelMode(channel, choice.single, provider)),
+            ),
+          ],
+          if (sharedBlocked) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Aux voltage, resistance and diode share one input, which '
+              '$otherName is using.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ]),
+        section('Range', [
+          _rangeSelector(channel, provider, (change) => setState(change)),
+        ]),
+        section('Zero', [_zeroControl(channel, provider)]),
+        if (mode == ChannelMode.resistance)
+          section('Continuity', [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: Icon(
+                _continuityToneEnabled ? Icons.volume_up : Icons.volume_off,
+              ),
+              title: const Text('Continuity tone'),
+              subtitle: Text(
+                'Beep below ${continuityThresholdOhms.round()} Ω. Holds the '
+                '1 kΩ range so the beep follows the probes.',
+              ),
+              value: _continuityToneEnabled,
+              onChanged: (enabled) {
+                setState(() => _setContinuityToneEnabled(enabled));
+                unawaited(provider.setRange(channel, enabled ? 0 : null));
+              },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.show_chart),
+              title: const Text('Continuity graph'),
+              subtitle: const Text('Plot open or continuous instead of ohms'),
+              value: _continuityGraph,
+              onChanged: (enabled) =>
+                  setState(() => _continuityGraph = enabled),
+            ),
+          ]),
+        section('Display', [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Show channel'),
+            subtitle: const Text('In the readings and the chart'),
+            value: channel == 0 ? _showCh1 : _showCh2,
+            onChanged: (visible) => setState(() {
+              if (channel == 0) {
+                _showCh1 = visible;
+              } else {
+                _showCh2 = visible;
+              }
+            }),
+          ),
+          const SizedBox(height: 4),
+          Text('Units', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          SegmentedButton<DisplayUnit>(
+            showSelectedIcon: false,
+            segments: [
+              for (final unit in DisplayUnit.choicesFor(mode.units))
+                ButtonSegment(value: unit, label: Text(unit.label(mode.units))),
+            ],
+            selected: {
+              DisplayUnit.choicesFor(
+                    mode.units,
+                  ).contains(channel == 0 ? _ch1DisplayUnit : _ch2DisplayUnit)
+                  ? (channel == 0 ? _ch1DisplayUnit : _ch2DisplayUnit)
+                  : DisplayUnit.auto,
+            },
+            onSelectionChanged: (choice) => setState(() {
+              if (channel == 0) {
+                _ch1DisplayUnit = choice.single;
+              } else {
+                _ch2DisplayUnit = choice.single;
+              }
+            }),
+          ),
+        ]),
+      ],
     );
   }
 
@@ -832,8 +1006,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     );
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.exposure_zero),
-      title: const Text('Zero (relative reading)'),
+      title: const Text('Relative reading'),
       subtitle: Text(
         offset == 0
             ? mode == ChannelMode.resistance
@@ -886,7 +1059,8 @@ class _DeviceScreenState extends State<DeviceScreen>
     if (mode == ChannelMode.internalTemperature) {
       return '${display.round()} °C';
     }
-    final scale = SiScale.forRange(display);
+    // Names a range like a meter's dial: "1 kΩ", "1 MΩ".
+    final scale = SiScale.forValue(display);
     final value = display * scale.multiplier;
     final text = value == value.roundToDouble()
         ? value.round().toString()
@@ -1597,5 +1771,93 @@ class _DeviceScreenState extends State<DeviceScreen>
         '--output readings.csv';
     await Clipboard.setData(ClipboardData(text: command));
     _showMessage('CSV logger command copied');
+  }
+}
+
+/// A measurable quantity: its DC mode and, where the meter supports it, the
+/// AC (RMS) variant.
+class _Quantity {
+  const _Quantity({
+    required this.symbol,
+    required this.label,
+    required this.hint,
+    required this.dc,
+    this.ac,
+  });
+
+  final String symbol;
+  final String label;
+  final String hint;
+  final ChannelMode dc;
+  final ChannelMode? ac;
+}
+
+/// A dial-style tile: the quantity's symbol large, its name below.
+class _QuantityTile extends StatelessWidget {
+  const _QuantityTile({
+    required this.quantity,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+    this.disabledReason,
+  });
+
+  final _Quantity quantity;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  final String? disabledReason;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final enabled = disabledReason == null;
+    final tile = Semantics(
+      button: true,
+      selected: selected,
+      enabled: enabled,
+      label: quantity.label,
+      child: Material(
+        color: selected ? color.withAlpha(30) : colors.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: selected ? color : colors.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: InkWell(
+          key: ValueKey('quantity-${quantity.label}'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: enabled && !selected ? onTap : null,
+          child: Opacity(
+            opacity: enabled ? 1 : 0.38,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                children: [
+                  Text(
+                    quantity.symbol,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? color : colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    quantity.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Tooltip(message: disabledReason ?? quantity.hint, child: tile);
   }
 }

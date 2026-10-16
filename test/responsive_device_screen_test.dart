@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moosh_revolt/widgets/realtime_chart.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/screens/device_screen.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
@@ -131,10 +133,17 @@ void main() {
 
     await tester.tap(ch1);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Resistance'));
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Resistance'));
+    expect(find.text('Continuity tone'), findsNothing);
+    final resistance = find.byKey(const ValueKey('quantity-Resistance'));
+    await tester.ensureVisible(resistance);
+    await tester.tap(resistance);
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('Continuity tone'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Continuity tone'), findsOneWidget);
   });
 
@@ -152,17 +161,42 @@ void main() {
     await tester.tap(ch2Control);
     await tester.pumpAndSettle();
 
+    // Phones get a full-screen page rather than a sheet.
     expect(find.text('CH2 configuration'), findsOneWidget);
-    expect(find.text('Measurement'), findsOneWidget);
-    expect(find.text('Voltage AC'), findsOneWidget);
-    expect(find.text('Internal Temperature'), findsOneWidget);
-    expect(find.text('Current DC'), findsNothing);
+    expect(find.text('MEASURE'), findsOneWidget);
+    expect(find.text('Voltage'), findsOneWidget);
+    expect(find.text('AC (RMS)'), findsOneWidget);
+    expect(find.text('Temperature'), findsOneWidget);
+    expect(find.text('Current'), findsNothing);
     // The shared auxiliary modes are offered on either channel.
     expect(find.text('Resistance'), findsOneWidget);
-    expect(find.text('Range'), findsOneWidget);
-    expect(find.text('Auto · 60 V'), findsOneWidget);
+    expect(find.text('RANGE'), findsOneWidget);
+    // Shown in the live reading and as the selected range chip.
+    expect(find.text('Auto · 60 V'), findsNWidgets(2));
     expect(find.text('60 V'), findsOneWidget);
     expect(find.text('600 V'), findsOneWidget);
+  });
+
+  testWidgets('docks channel configuration beside the meter on desktop', (
+    tester,
+  ) async {
+    await pumpDevice(
+      tester,
+      size: const Size(1280, 800),
+      provider: FakeBleProvider(ch1: 0.003, ch2: 1.2),
+    );
+
+    await tester.tap(find.byTooltip('Configure CH1 · Current DC'));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const ValueKey('channel-config-panel'));
+    expect(panel, findsOneWidget);
+    // Not modal: the chart stays on screen next to the panel.
+    expect(find.byType(RealtimeChart), findsOneWidget);
+    expect(find.text('CH1 configuration'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(panel, findsNothing);
   });
 
   testWidgets('tracks min/max independently for each channel', (tester) async {
