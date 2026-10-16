@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:moosh_revolt/models/math_channel.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 
@@ -28,6 +29,7 @@ class SettingsProvider extends ChangeNotifier {
   final List<DisplayUnit> _displayUnit = [DisplayUnit.auto, DisplayUnit.auto];
   String? _graphStyle;
   bool _continuityTone = false;
+  MathFunction _mathFunction = MathFunction.off;
   bool _continuityGraph = false;
   double _readingsFraction = defaultReadingsFraction;
 
@@ -63,6 +65,9 @@ class SettingsProvider extends ChangeNotifier {
   /// The graph style's name, or null for the default.
   String? get graphStyle => _graphStyle;
   bool get continuityTone => _continuityTone;
+
+  /// The math channel shown as a third reading.
+  MathFunction get mathFunction => _mathFunction;
   bool get continuityGraph => _continuityGraph;
 
   /// Share of the meter screen given to the readings; the chart gets the
@@ -143,6 +148,11 @@ class SettingsProvider extends ChangeNotifier {
     _exporterAllowRemote = _prefs?.getBool('exporter_allow_remote') ?? false;
     _graphStyle = _prefs?.getString('graph_style');
     _continuityTone = _prefs?.getBool('continuity_tone') ?? false;
+    _mathFunction = _byName(
+      MathFunction.values,
+      _prefs?.getString('math_function'),
+      MathFunction.off,
+    );
     _continuityGraph = _prefs?.getBool('continuity_graph') ?? false;
     _readingsFraction =
         (_prefs?.getDouble('readings_fraction') ?? defaultReadingsFraction)
@@ -242,6 +252,12 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       _prefs?.setString('graph_style', name);
     }
+    notifyListeners();
+  }
+
+  set mathFunction(MathFunction value) {
+    _mathFunction = value;
+    _prefs?.setString('math_function', value.name);
     notifyListeners();
   }
 

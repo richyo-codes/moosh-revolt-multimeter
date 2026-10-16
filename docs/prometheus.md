@@ -49,6 +49,10 @@ unit. The `channel` label is `1` or `2`, `mode` is the channel mode, and
 | `mooshimeter_resistance_ohms` | Resistance |
 | `mooshimeter_diode_drop_volts` | Diode forward voltage |
 | `mooshimeter_temperature_celsius` | Internal temperature of the meter |
+| `mooshimeter_real_power_watts` | Real power, while CH1 measures current and CH2 voltage |
+| `mooshimeter_apparent_power_voltamperes` | CH1 current × CH2 voltage |
+| `mooshimeter_power_factor_ratio` | Real power ÷ apparent power |
+| `mooshimeter_thermocouple_celsius` | Type-K thermocouple temperature, while one channel measures Aux voltage DC and the other Temperature |
 | `mooshimeter_overload` | `1` while a channel's input exceeds its range |
 | `mooshimeter_range_full_scale` | Full scale of the active range, with a `unit` label |
 | `mooshimeter_auto_range` | `1` while a channel auto-ranges |

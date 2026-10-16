@@ -99,12 +99,18 @@ class DeviceReadings {
   final bool ch1Overload;
   final bool ch2Overload;
 
+  /// Real power in watts, which the meter computes from the CH1 and CH2
+  /// sample buffers (REAL_PWR). Meaningful when CH1 measures current and
+  /// CH2 voltage; null until the meter has sent it.
+  final double? realPower;
+
   DeviceReadings({
     required this.ch1Value,
     required this.ch2Value,
     required this.timestamp,
     this.ch1Overload = false,
     this.ch2Overload = false,
+    this.realPower,
   });
 
   double value(int channel) => channel == 0 ? ch1Value : ch2Value;
@@ -182,6 +188,8 @@ class BleProvider extends ChangeNotifier {
   int _ch1ValueNodeId = ConfigNode.ch1Value;
   int _ch2ValueNodeId = ConfigNode.ch2Value;
   int _batteryNodeId = ConfigNode.batV;
+  int _realPowerNodeId = ConfigNode.realPwr;
+  double? _realPower;
 
   // RSSI (not available on Linux, cached for display)
   int _rssi = -999;
@@ -564,6 +572,7 @@ class BleProvider extends ChangeNotifier {
   }
 
   void _resetAfterDisconnect() {
+    _realPower = null;
     _deviceId = null;
     _transportConnected = false;
     _handshakeDone = false;
@@ -875,6 +884,7 @@ class BleProvider extends ChangeNotifier {
         _ch1ValueNodeId = _nodeId('CH1:VALUE', ConfigNode.ch1Value);
         _ch2ValueNodeId = _nodeId('CH2:VALUE', ConfigNode.ch2Value);
         _batteryNodeId = _nodeId('BAT_V', ConfigNode.batV);
+        _realPowerNodeId = _nodeId('REAL_PWR', ConfigNode.realPwr);
         debugPrint('[BLE]     runtime config tree parsed');
       } catch (e) {
         debugPrint('[BLE]     handshake FAILED: invalid config tree: $e');
@@ -1035,6 +1045,15 @@ class BleProvider extends ChangeNotifier {
       }
       return;
     }
+    if (nodeId == _realPowerNodeId) {
+      if (payload.length >= 4) {
+        _realPower = ByteData.view(
+          payload.buffer,
+          payload.offsetInBytes,
+        ).getFloat32(0, Endian.little);
+      }
+      return;
+    }
     if (nodeId == _batteryNodeId) {
       if (payload.length >= 4) {
         _battery = ByteData.view(payload.buffer).getFloat32(0, Endian.little);
@@ -1112,6 +1131,7 @@ class BleProvider extends ChangeNotifier {
       timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0,
       ch1Overload: _isOverload(0, _ch1Value),
       ch2Overload: _isOverload(1, _ch2Value),
+      realPower: _realPower,
     );
     _lastReadingsAt = DateTime.now();
     if (emitCompleteSample) _readingsController.add(_latestReadings!);

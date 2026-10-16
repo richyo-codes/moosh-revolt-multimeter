@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:moosh_revolt/models/math_channel.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 
@@ -219,6 +220,40 @@ String renderPrometheusMetrics(BleProvider provider, {int scrapes = 0}) {
   }
   for (final entry in quantities.entries) {
     metric(entry.key, 'gauge', entry.value.help, entry.value.samples);
+  }
+  // Values derived from both channels, whenever the channels allow them.
+  if (readings != null) {
+    for (final (fn, name, help) in const [
+      (
+        MathFunction.realPower,
+        'mooshimeter_real_power_watts',
+        'Real power computed by the meter from CH1 current and CH2 voltage.',
+      ),
+      (
+        MathFunction.apparentPower,
+        'mooshimeter_apparent_power_voltamperes',
+        'Apparent power, CH1 current times CH2 voltage.',
+      ),
+      (
+        MathFunction.powerFactor,
+        'mooshimeter_power_factor_ratio',
+        'Real power divided by apparent power.',
+      ),
+      (
+        MathFunction.thermocoupleK,
+        'mooshimeter_thermocouple_celsius',
+        'Type-K thermocouple temperature on the auxiliary input.',
+      ),
+    ]) {
+      final value = fn.compute(
+        provider,
+        readings,
+        temperatureUnit: TemperatureUnit.celsius,
+      );
+      if (!value.isNaN) {
+        metric(name, 'gauge', help, ['$name ${number(value)}']);
+      }
+    }
   }
   metric(
     'mooshimeter_overload',

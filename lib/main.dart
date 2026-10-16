@@ -19,7 +19,10 @@ const mockMode = bool.fromEnvironment('MOOSHREVOLT_MOCK');
 final MockBleProvider? mockBleProvider = mockMode ? MockBleProvider() : null;
 final BleProvider bleProvider = mockBleProvider ?? BleProvider();
 final PrometheusExporter prometheusExporter = PrometheusExporter(bleProvider);
-final CsvRecorder csvRecorder = CsvRecorder(bleProvider);
+final CsvRecorder csvRecorder = CsvRecorder(
+  bleProvider,
+  mathFunction: () => settingsProvider.mathFunction,
+);
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {

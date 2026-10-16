@@ -71,6 +71,23 @@ in degrees Celsius.
 
 You can select a fixed rate from the menu or in Meter settings.
 
+## Math channel
+
+**Math** in the menu adds a third reading derived from both channels:
+
+| Function | Needs | Result |
+| --- | --- | --- |
+| Real power | CH1 current, CH2 voltage (both DC or both AC) | W, computed by the meter from the sample buffers |
+| Apparent power | the same | VA, CH1 × CH2 |
+| Power factor | the same | real power ÷ apparent power |
+| Thermocouple (type K) | one channel on Aux voltage DC with the thermocouple, the other on Temperature | the meter's temperature plus the thermocouple's difference |
+
+When the channels do not match, the card explains what it needs and offers
+**Set up channels**. The thermocouple uses the ITS-90 type-K polynomial,
+valid from 0 to 500 °C above the meter's own temperature. Like the original
+Mooshimeter app, it treats the meter's internal temperature as the cold
+junction, so keep the thermocouple's connection near the meter.
+
 ## Recording
 
 Select the red **Record** button in the toolbar to write every reading the

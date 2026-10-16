@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:moosh_revolt/models/math_channel.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 
@@ -14,9 +15,11 @@ import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 /// channel's measurement mid-recording keeps the file consistent. It keeps
 /// recording across reconnects, which simply leave a gap in time.
 class CsvRecorder extends ChangeNotifier {
-  CsvRecorder(this._provider);
+  CsvRecorder(this._provider, {MathFunction Function()? mathFunction})
+    : _mathFunction = mathFunction ?? (() => MathFunction.off);
 
   final BleProvider _provider;
+  final MathFunction Function() _mathFunction;
   IOSink? _sink;
   File? _file;
   DateTime? _startedAt;
@@ -26,7 +29,8 @@ class CsvRecorder extends ChangeNotifier {
 
   static const header =
       'timestamp_iso8601,unix_seconds,'
-      'ch1_mode,ch1_value,ch1_unit,ch2_mode,ch2_value,ch2_unit';
+      'ch1_mode,ch1_value,ch1_unit,ch2_mode,ch2_value,ch2_unit,'
+      'math_function,math_value,math_unit';
 
   bool get recording => _sink != null;
   File? get file => _file;
@@ -44,7 +48,7 @@ class CsvRecorder extends ChangeNotifier {
     _startedAt = DateTime.now();
     _rows = 0;
     _subscription = _provider.readings.listen((readings) {
-      sink.writeln(csvRow(_provider, readings));
+      sink.writeln(csvRow(_provider, readings, _mathFunction()));
       _rows++;
       notifyListeners();
     });
@@ -81,7 +85,11 @@ class CsvRecorder extends ChangeNotifier {
 
 /// One CSV row for [readings]: each channel's mode, value in its display
 /// unit (or OL) and unit.
-String csvRow(BleProvider provider, DeviceReadings readings) {
+String csvRow(
+  BleProvider provider,
+  DeviceReadings readings, [
+  MathFunction math = MathFunction.off,
+]) {
   final time = DateTime.fromMillisecondsSinceEpoch(
     (readings.timestamp * 1000).round(),
   );
@@ -96,6 +104,15 @@ String csvRow(BleProvider provider, DeviceReadings readings) {
       ..add(mode.name)
       ..add(value.isNaN ? 'OL' : '$value')
       ..add(mode.units);
+  }
+  if (math == MathFunction.off) {
+    fields.addAll(['', '', '']);
+  } else {
+    final value = math.compute(provider, readings);
+    fields
+      ..add(math.name)
+      ..add(value.isNaN ? '' : '$value')
+      ..add(math.units);
   }
   return fields.join(',');
 }

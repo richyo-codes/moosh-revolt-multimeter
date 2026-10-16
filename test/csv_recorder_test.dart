@@ -41,8 +41,8 @@ void main() {
 
     final lines = await file.readAsLines();
     expect(lines.first, CsvRecorder.header);
-    expect(lines[1], endsWith(',current,2.5,A,voltage,14.2,V'));
-    expect(lines[2], endsWith(',current,2.6,A,resistance,OL,Ω'));
+    expect(lines[1], endsWith(',current,2.5,A,voltage,14.2,V,,,'));
+    expect(lines[2], endsWith(',current,2.6,A,resistance,OL,Ω,,,'));
     expect(lines[2], contains(',1000.500,'));
     expect(recorder.recording, isFalse);
   });

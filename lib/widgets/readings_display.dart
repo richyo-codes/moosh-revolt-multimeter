@@ -52,6 +52,9 @@ class ReadingsDisplay extends StatelessWidget {
   /// Shows a hidden channel again (0 = CH1, 1 = CH2).
   final ValueChanged<int>? onShowChannel;
 
+  /// A third card for the math channel, when one is selected.
+  final Widget? math;
+
   const ReadingsDisplay({
     super.key,
     required this.ch1Value,
@@ -94,6 +97,7 @@ class ReadingsDisplay extends StatelessWidget {
     this.showCh1 = true,
     this.showCh2 = true,
     this.onShowChannel,
+    this.math,
   });
 
   Widget _reading(int channel, {required bool compact}) {
@@ -128,8 +132,6 @@ class ReadingsDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ch1 = _reading(0, compact: false);
-    final ch2 = _reading(1, compact: false);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Stacked cards only receive about half of this height.  Switch to the
@@ -137,7 +139,12 @@ class ReadingsDisplay extends StatelessWidget {
         final compact = compactLayout || constraints.maxHeight < 360;
         final compactCh1 = _reading(0, compact: compact);
         final compactCh2 = _reading(1, compact: compact);
-        if (!showCh1 && !showCh2) {
+        final cards = [
+          if (showCh1) _readingPanel(context, compactCh1),
+          if (showCh2) _readingPanel(context, compactCh2),
+          if (math case final math?) _readingPanel(context, math),
+        ];
+        if (!showCh1 && !showCh2 && math == null) {
           return Center(
             key: const ValueKey('channel-readings-none'),
             child: Wrap(
@@ -163,43 +170,30 @@ class ReadingsDisplay extends StatelessWidget {
             ),
           );
         }
-        if (!showCh1) {
-          return _readingPanel(context, compactCh2);
-        }
-        if (!showCh2) {
-          return _readingPanel(context, compactCh1);
-        }
+        if (cards.length == 1) return cards.single;
+        List<Widget> spaced(double gap, Axis axis) => [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0)
+              SizedBox(
+                width: axis == Axis.horizontal ? gap : null,
+                height: axis == Axis.vertical ? gap : null,
+              ),
+            Expanded(child: cards[i]),
+          ],
+        ];
         if (stackedLayout || constraints.maxWidth < 450) {
           return Column(
             key: const ValueKey('channel-readings-stacked'),
-            children: [
-              Expanded(
-                child: _readingPanel(context, compact ? compactCh1 : ch1),
-              ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: _readingPanel(context, compact ? compactCh2 : ch2),
-              ),
-            ],
-          );
-        }
-        if (compact) {
-          return Row(
-            key: const ValueKey('channel-readings-compact'),
-            children: [
-              Expanded(child: _readingPanel(context, compactCh1)),
-              const SizedBox(width: 4),
-              Expanded(child: _readingPanel(context, compactCh2)),
-            ],
+            children: spaced(6, Axis.vertical),
           );
         }
         return Row(
-          key: const ValueKey('channel-readings-side-by-side'),
-          children: [
-            Expanded(child: _readingPanel(context, ch1)),
-            const SizedBox(width: 8),
-            Expanded(child: _readingPanel(context, ch2)),
-          ],
+          key: ValueKey(
+            compact
+                ? 'channel-readings-compact'
+                : 'channel-readings-side-by-side',
+          ),
+          children: spaced(compact ? 4 : 8, Axis.horizontal),
         );
       },
     );

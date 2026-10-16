@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_ble/universal_ble.dart';
 import 'package:provider/provider.dart';
+import 'package:moosh_revolt/models/math_channel.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 import 'package:moosh_revolt/widgets/readings_display.dart';
@@ -282,6 +283,11 @@ class _DeviceScreenState extends State<DeviceScreen>
                             '${formatChartWindow(settings.chartWindow)}',
                       ),
                       _menuItem(
+                        'math',
+                        Icons.functions,
+                        'Math: ${settings.mathFunction.label}',
+                      ),
+                      _menuItem(
                         'sample-rate',
                         Icons.speed,
                         'Sample rate: ${_sampleRateLabel(provider)}',
@@ -528,6 +534,7 @@ class _DeviceScreenState extends State<DeviceScreen>
           hasFreshSample: hasFreshReadings,
           showCh1: _showCh1,
           showCh2: _showCh2,
+          math: _mathCard(provider, hasFreshReadings),
           onShowChannel: (channel) => setState(() {
             if (channel == 0) {
               _showCh1 = true;
@@ -1785,6 +1792,9 @@ class _DeviceScreenState extends State<DeviceScreen>
       case 'chart-window':
         unawaited(_showChartWindowPicker());
         break;
+      case 'math':
+        unawaited(_showMathPicker());
+        break;
       case 'clear-graph':
         _clearGraph();
         break;
@@ -1821,6 +1831,149 @@ class _DeviceScreenState extends State<DeviceScreen>
       ),
     );
     if (style != null && mounted) setState(() => _graphStyle = style);
+  }
+
+  static const _mathColor = Colors.purple;
+
+  /// The math channel as a third reading card, or null when it is off.
+  Widget? _mathCard(BleProvider provider, bool hasFreshReadings) {
+    final function = _settingsProvider.mathFunction;
+    if (function == MathFunction.off) return null;
+    final theme = Theme.of(context);
+    final valid = function.isValid(_mode(0), _mode(1));
+    final readings = hasFreshReadings ? provider.latestReadings : null;
+    final value = readings == null
+        ? double.nan
+        : function.compute(provider, readings);
+    final overload =
+        readings != null && (readings.overload(0) || readings.overload(1));
+    final format = ReadingFormat(
+      units: function.units,
+      fullScale: function.fullScaleFor(provider),
+      significantDigits: provider.significantDigits,
+    );
+    return Padding(
+      key: const ValueKey('math-card'),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.functions, size: 18, color: _mathColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'MATH · ${function.label}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _mathColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: 'Turn off math',
+                onPressed: () =>
+                    _settingsProvider.mathFunction = MathFunction.off,
+              ),
+            ],
+          ),
+          if (valid)
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      value.isNaN
+                          ? (overload ? 'OL' : '—')
+                          : format.number(value),
+                      style: TextStyle(
+                        fontSize: 96,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                        color: overload ? Colors.orange.shade700 : _mathColor,
+                      ),
+                    ),
+                    if (!value.isNaN) ...[
+                      const SizedBox(width: 18),
+                      Text(
+                        format.unit(value),
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(function.requirement, style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: () => unawaited(_setUpMath(function, provider)),
+                    child: const Text('Set up channels'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Switches both channels to the modes [function] needs. The channel
+  /// that leaves the shared input goes first, so the other may take it.
+  Future<void> _setUpMath(MathFunction function, BleProvider provider) async {
+    final (ch1, ch2) = function.setupFor(_mode(0), _mode(1));
+    if (ch1.usesSharedInput) {
+      await _setChannelMode(1, ch2, provider);
+      await _setChannelMode(0, ch1, provider);
+    } else {
+      await _setChannelMode(0, ch1, provider);
+      await _setChannelMode(1, ch2, provider);
+    }
+  }
+
+  Future<void> _showMathPicker() async {
+    final current = _settingsProvider.mathFunction;
+    final choice = await showDialog<MathFunction>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Math channel'),
+        children: MathFunction.values
+            .map(
+              (function) => ListTile(
+                leading: Icon(
+                  function == current
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(function.label),
+                subtitle: function == MathFunction.off
+                    ? null
+                    : Text(function.requirement),
+                onTap: () => Navigator.pop(context, function),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (choice != null && mounted) _settingsProvider.mathFunction = choice;
   }
 
   Future<void> _showChartWindowPicker() async {
