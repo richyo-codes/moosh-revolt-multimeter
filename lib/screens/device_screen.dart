@@ -935,8 +935,7 @@ class _DeviceScreenState extends State<DeviceScreen>
     });
   }
 
-  ChannelMode _mode(int channel) =>
-      ChannelMode.fromInput(channel, _bleProvider.input(channel));
+  ChannelMode _mode(int channel) => _bleProvider.mode(channel);
 
   /// The channel measuring resistance, if any (only one channel can use the
   /// shared input).
@@ -947,24 +946,11 @@ class _DeviceScreenState extends State<DeviceScreen>
     return null;
   }
 
-  /// Full scale of [channel]'s active range in its display unit.
-  double? _displayFullScale(int channel) {
-    final fullScale = _bleProvider.rangeMax(channel);
-    return fullScale == null ? null : _mode(channel).toDisplay(fullScale);
-  }
+  double? _displayFullScale(int channel) =>
+      _bleProvider.displayFullScale(channel);
 
-  /// [channel]'s reading in its display unit, or NaN when it is not a
-  /// measurement (input saturated, or a resistance driven by a voltage).
-  double _displayValue(DeviceReadings readings, int channel) {
-    if (readings.overload(channel)) return double.nan;
-    final mode = _mode(channel);
-    final value = mode.toDisplay(readings.value(channel));
-    final fullScale = _bleProvider.rangeMax(channel);
-    if (fullScale != null && mode.isImplausible(value, fullScale)) {
-      return double.nan;
-    }
-    return value;
-  }
+  double _displayValue(DeviceReadings readings, int channel) =>
+      _bleProvider.displayValue(readings, channel);
 
   String _chartLabel(int channel, {required bool continuity}) {
     final name = 'CH${channel + 1}';

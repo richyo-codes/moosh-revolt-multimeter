@@ -78,6 +78,32 @@ enum ChannelMode {
       this == resistance && value < -0.05 * fullScale;
 }
 
+/// Display-level view of the provider's channels, shared by the meter
+/// screen and the metrics exporter so both apply the same rules.
+extension MeterChannels on BleProvider {
+  ChannelMode mode(int channel) =>
+      ChannelMode.fromInput(channel, input(channel));
+
+  /// Full scale of [channel]'s active range in its display unit.
+  double? displayFullScale(int channel) {
+    final fullScale = rangeMax(channel);
+    return fullScale == null ? null : mode(channel).toDisplay(fullScale);
+  }
+
+  /// [channel]'s reading in its display unit, or NaN when it is not a
+  /// measurement (input saturated, or a resistance driven by a voltage).
+  double displayValue(DeviceReadings readings, int channel) {
+    if (readings.overload(channel)) return double.nan;
+    final channelMode = mode(channel);
+    final value = channelMode.toDisplay(readings.value(channel));
+    final fullScale = rangeMax(channel);
+    if (fullScale != null && channelMode.isImplausible(value, fullScale)) {
+      return double.nan;
+    }
+    return value;
+  }
+}
+
 class SiScale {
   const SiScale(this.multiplier, this.prefix);
 

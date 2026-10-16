@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:moosh_revolt/services/prometheus_exporter.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/screens/about_screen.dart';
 
@@ -265,6 +266,19 @@ class SettingsScreen extends StatelessWidget {
               ),
               const Divider(height: 32),
 
+              // --- Integrations ---
+              const Text(
+                'Integrations',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const _PrometheusSettings(),
+              const Divider(height: 32),
+
               // --- About ---
               const Text(
                 'About',
@@ -329,3 +343,60 @@ extension on DateTime {
 }
 
 const _serviceUuid = '1BC5FFA0-0200-62AB-E411-F254E005DBD4';
+
+/// Prometheus exporter controls with the live endpoint status.
+class _PrometheusSettings extends StatelessWidget {
+  const _PrometheusSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    // The exporter is absent in widget tests that only provide settings.
+    final exporter = context.watch<PrometheusExporter?>();
+    final status = !settings.exporterEnabled
+        ? 'Serve live readings at /metrics for Prometheus or Grafana'
+        : exporter?.error ??
+              (exporter?.url != null
+                  ? 'Serving ${exporter!.url}'
+                  : 'Starting…');
+    return Column(
+      children: [
+        SwitchListTile(
+          title: const Text('Prometheus exporter'),
+          subtitle: Text(status),
+          value: settings.exporterEnabled,
+          onChanged: (enabled) => settings.exporterEnabled = enabled,
+        ),
+        if (settings.exporterEnabled) ...[
+          ListTile(
+            title: const Text('Port'),
+            trailing: SizedBox(
+              width: 96,
+              child: TextFormField(
+                key: ValueKey('exporter-port-${settings.exporterPort}'),
+                initialValue: '${settings.exporterPort}',
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.end,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(isDense: true),
+                onFieldSubmitted: (text) {
+                  final port = int.tryParse(text);
+                  if (port != null) settings.exporterPort = port;
+                },
+              ),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Allow access from other devices'),
+            subtitle: const Text(
+              'Anyone on your network can read the measurements. Off '
+              'serves this computer only.',
+            ),
+            value: settings.exporterAllowRemote,
+            onChanged: (allow) => settings.exporterAllowRemote = allow,
+          ),
+        ],
+      ],
+    );
+  }
+}

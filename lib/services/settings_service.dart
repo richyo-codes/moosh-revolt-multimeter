@@ -29,6 +29,11 @@ class SettingsProvider extends ChangeNotifier {
   bool _continuityGraph = false;
   double _readingsFraction = defaultReadingsFraction;
 
+  // --- Prometheus exporter ---
+  bool _exporterEnabled = false;
+  int _exporterPort = 9471;
+  bool _exporterAllowRemote = false;
+
   // --- Remembered Devices ---
   List<RememberedDevice> _rememberedDevices = [];
 
@@ -57,6 +62,12 @@ class SettingsProvider extends ChangeNotifier {
   /// Share of the meter screen given to the readings; the chart gets the
   /// rest.
   double get readingsFraction => _readingsFraction;
+
+  bool get exporterEnabled => _exporterEnabled;
+  int get exporterPort => _exporterPort;
+
+  /// Serve metrics to other machines rather than only this one.
+  bool get exporterAllowRemote => _exporterAllowRemote;
 
   /// Chart history choices offered in the UI.
   static const chartWindows = [
@@ -114,6 +125,9 @@ class SettingsProvider extends ChangeNotifier {
     if (_channelMode[0].usesSharedInput && _channelMode[1].usesSharedInput) {
       _channelMode[1] = ChannelMode.voltage;
     }
+    _exporterEnabled = _prefs?.getBool('exporter_enabled') ?? false;
+    _exporterPort = _prefs?.getInt('exporter_port') ?? _exporterPort;
+    _exporterAllowRemote = _prefs?.getBool('exporter_allow_remote') ?? false;
     _graphStyle = _prefs?.getString('graph_style');
     _continuityTone = _prefs?.getBool('continuity_tone') ?? false;
     _continuityGraph = _prefs?.getBool('continuity_graph') ?? false;
@@ -218,6 +232,24 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   static const defaultReadingsFraction = 0.4;
+  set exporterEnabled(bool value) {
+    _exporterEnabled = value;
+    _prefs?.setBool('exporter_enabled', value);
+    notifyListeners();
+  }
+
+  set exporterPort(int value) {
+    _exporterPort = value.clamp(1024, 65535);
+    _prefs?.setInt('exporter_port', _exporterPort);
+    notifyListeners();
+  }
+
+  set exporterAllowRemote(bool value) {
+    _exporterAllowRemote = value;
+    _prefs?.setBool('exporter_allow_remote', value);
+    notifyListeners();
+  }
+
   static const minReadingsFraction = 0.15;
   static const maxReadingsFraction = 0.7;
 
