@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -89,6 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
@@ -122,7 +127,6 @@ jobs:
   flatpak:
     needs: linux-release
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
         with:
@@ -175,3 +179,47 @@ jobs:
               --form "attachment=@$asset" \
               "$GITEA_API_URL/repos/$REPOSITORY/releases/$release_id/assets?name=$asset"
           done
+
+  gtk4:
+    if: github.server_url == 'https://github.com'
+    uses: ./.github/workflows/gtk4.yml
+
+  publish:
+    name: Publish complete GitHub release
+    if: github.server_url == 'https://github.com'
+    needs: [linux-release, flatpak, gtk4]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download GTK4 native archive
+        uses: actions/download-artifact@v8
+        with:
+          name: mooshrevolt-linux-gtk4-x64
+          path: release-assets
+      - name: Download GTK4 Flatpak
+        uses: actions/download-artifact@v8
+        with:
+          name: mooshrevolt-flatpak-gtk4-x64
+          path: release-assets
+      - name: Verify and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          # Verify archived payloads before attaching them to the draft.
+          for checksum in *.sha256; do sha256sum --check "$checksum"; done
+          gh release upload "$RELEASE_TAG" ./* --clobber
+          # Validate all platforms already attached by the preceding jobs.
+          gh release download "$RELEASE_TAG" --dir ../verify-release
+          cd ../verify-release
+          test -s mooshrevolt-linux-x64.tar.gz
+          test -s mooshrevolt-android.apk
+          test -s mooshrevolt.flatpak
+          test -s "mooshrevolt-linux-gtk4-x64-$RELEASE_TAG.tar.gz"
+          test -s "mooshrevolt-gtk4-x64-$RELEASE_TAG.flatpak"
+          for checksum in *.sha256; do sha256sum --check "$checksum"; done
+          gh release edit "$RELEASE_TAG" --draft=false
