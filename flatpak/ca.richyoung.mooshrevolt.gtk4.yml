@@ -1,0 +1,48 @@
+app-id: ca.richyoung.mooshrevolt
+branch: gtk4
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: run-mooshrevolt
+build-options:
+  # Preserve prebuilt ELF files: SDK debuginfo extraction can damage the
+  # program headers relocated by patchelf when adding a RUNPATH.
+  no-debuginfo: true
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --system-talk-name=org.bluez
+  - --device=dri
+  - --share=ipc
+
+modules:
+  - name: mooshrevolt
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../build/linux-gtk4/x64/release/bundle
+        dest: bundle
+      - type: dir
+        path: .
+        dest: flatpak
+      - type: dir
+        path: ../linux/assets/icons
+        dest: icons
+      - type: file
+        path: ../LICENSE
+    build-commands:
+      - install -Dm755 bundle/mooshrevolt /app/bin/mooshrevolt
+      - cp -r bundle/data /app/bin/
+      - cp -r bundle/lib /app/bin/
+      - install -Dm644 LICENSE /app/share/licenses/ca.richyoung.mooshrevolt/LICENSE
+      - |
+        cat > /app/bin/run-mooshrevolt <<'EOF'
+        #!/usr/bin/env sh
+        export LD_LIBRARY_PATH="/app/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        exec /app/bin/mooshrevolt "$@"
+        EOF
+      - chmod 755 /app/bin/run-mooshrevolt
+      - install -Dm644 flatpak/ca.richyoung.mooshrevolt.desktop /app/share/applications/ca.richyoung.mooshrevolt.desktop
+      - install -Dm644 flatpak/ca.richyoung.mooshrevolt.metainfo.xml /app/share/metainfo/ca.richyoung.mooshrevolt.metainfo.xml
+      - install -Dm644 icons/hicolor/256x256/apps/ca.richyoung.mooshrevolt.png /app/share/icons/hicolor/256x256/apps/ca.richyoung.mooshrevolt.png

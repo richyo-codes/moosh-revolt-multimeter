@@ -1,7 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
-#ifdef GDK_WINDOWING_X11
+#if defined(GDK_WINDOWING_X11) && !defined(FLUTTER_LINUX_GTK4)
 #include <gdk/gdkx.h>
 #endif
 
@@ -14,10 +14,13 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+#ifndef FLUTTER_LINUX_GTK4
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
+
+#endif
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
@@ -33,7 +36,7 @@ static void my_application_activate(GApplication* application) {
   // If running on Wayland assume the header bar will work (may need changing
   // if future cases occur).
   gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
+#if defined(GDK_WINDOWING_X11) && !defined(FLUTTER_LINUX_GTK4)
   GdkScreen* screen = gtk_window_get_screen(window);
   if (GDK_IS_X11_SCREEN(screen)) {
     const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
@@ -44,9 +47,14 @@ static void my_application_activate(GApplication* application) {
 #endif
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
+#ifdef FLUTTER_LINUX_GTK4
+    gtk_window_set_title(window, "MooshRevolt");
+    gtk_header_bar_set_show_title_buttons(header_bar, TRUE);
+#else
     gtk_widget_show(GTK_WIDGET(header_bar));
     gtk_header_bar_set_title(header_bar, "MooshRevolt");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
+#endif
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
     gtk_window_set_title(window, "MooshRevolt");
@@ -64,6 +72,10 @@ static void my_application_activate(GApplication* application) {
   // for transparent.
   gdk_rgba_parse(&background_color, "#000000");
   fl_view_set_background_color(view, &background_color);
+#ifdef FLUTTER_LINUX_GTK4
+  gtk_widget_set_focusable(GTK_WIDGET(view), TRUE);
+  gtk_window_set_child(window, GTK_WIDGET(view));
+#else
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
@@ -72,8 +84,12 @@ static void my_application_activate(GApplication* application) {
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
+#endif
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+#ifdef FLUTTER_LINUX_GTK4
+  gtk_window_present(window);
+#endif
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

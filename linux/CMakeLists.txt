@@ -10,6 +10,23 @@ set(BINARY_NAME "mooshrevolt")
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
 set(APPLICATION_ID "ca.richyoung.mooshrevolt")
 
+# Keep the standard SDK on GTK3; the wrapper selects GTK4 explicitly.
+if(NOT "$ENV{FLUTTER_LINUX_GTK}" STREQUAL "")
+  set(LINUX_GTK_VARIANT "$ENV{FLUTTER_LINUX_GTK}")
+elseif(NOT DEFINED LINUX_GTK_VARIANT)
+  set(LINUX_GTK_VARIANT gtk3)
+endif()
+if(LINUX_GTK_VARIANT STREQUAL "gtk4")
+  set(LINUX_GTK_PKG gtk4)
+  set(LINUX_GTK_DEFINE FLUTTER_LINUX_GTK4)
+elseif(LINUX_GTK_VARIANT STREQUAL "gtk3")
+  set(LINUX_GTK_PKG gtk+-3.0)
+  set(LINUX_GTK_DEFINE FLUTTER_LINUX_GTK3)
+else()
+  message(FATAL_ERROR "Expected LINUX_GTK_VARIANT=gtk3 or gtk4")
+endif()
+message(STATUS "Building ${LINUX_GTK_VARIANT} runner")
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)
@@ -53,7 +70,8 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+pkg_check_modules(GTK REQUIRED IMPORTED_TARGET ${LINUX_GTK_PKG})
+add_compile_definitions(${LINUX_GTK_DEFINE})
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")

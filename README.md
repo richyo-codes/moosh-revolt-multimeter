@@ -48,3 +48,9 @@ safety-critical, high-voltage, or other consequential work.
 
 Copyright 2026 Richard Young. Licensed under the
 [GNU GPL v3.0](LICENSE).
+
+### GTK4 Linux and Flatpak
+
+An optional GTK4 runner and GNOME 51 Flatpak are available alongside GTK3.
+See [GTK4 build instructions](docs/gtk4.md) for the pinned Flutter fork, engine,
+local commands, and Bluetooth sandbox permissions.

@@ -1,0 +1,77 @@
+name: Linux GTK4
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  gtk4:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      FLUTTER_GTK4_REPOSITORY: https://github.com/richyo-codes/flutter.git
+      FLUTTER_GTK4_BRANCH: 3.48.0-gtk4.issue94804.20260925
+      FLUTTER_GTK4_SHA: e95aed6a2a35bdcc2242d944e08267b78f9ea317
+      FLUTTER_PREBUILT_ENGINE_VERSION: e0462bb4b7f33fb7bf4c59ba2a73cfa1d0385ce1
+      FLUTTER_ENGINE_STORAGE_BASE_URL: https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
+      FLUTTER_LINUX_GTK: gtk4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Install build and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang cmake ninja-build pkg-config libgtk-4-dev liblzma-dev curl git unzip xz-utils patchelf flatpak flatpak-builder dbus-user-session
+      - name: Install pinned Flutter fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/flutter-gtk4"
+          git clone --single-branch --branch "$FLUTTER_GTK4_BRANCH" "$FLUTTER_GTK4_REPOSITORY" "$sdk"
+          git -C "$sdk" checkout --detach "$FLUTTER_GTK4_SHA"
+          echo "FLUTTER_BIN=$sdk/bin/flutter" >> "$GITHUB_ENV"
+          FLUTTER_STORAGE_BASE_URL="$FLUTTER_ENGINE_STORAGE_BASE_URL" "$sdk/bin/flutter" --version
+          test "$(cat "$sdk/bin/cache/engine.stamp")" = "$FLUTTER_PREBUILT_ENGINE_VERSION"
+          bash tools/install_gtk4_prebuilt_engine.sh "$sdk"
+          "$sdk/bin/flutter" config --enable-linux-desktop
+          "$sdk/bin/flutter" precache --linux
+      - name: Build GTK4 release
+        run: bash tools/flutter_linux.sh gtk4 build --release
+      - name: Verify linkage and package native bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=build/linux-gtk4/x64/release/bundle
+          ldd "$bundle/mooshrevolt" | tee "$RUNNER_TEMP/gtk4-linkage.txt"
+          grep -q libgtk-4.so "$RUNNER_TEMP/gtk4-linkage.txt"
+          if grep -Eq 'libgtk-3.so|not found' "$RUNNER_TEMP/gtk4-linkage.txt"; then exit 1; fi
+          version="$(git describe --always --tags --dirty)"
+          echo "ARTIFACT_VERSION=$version" >> "$GITHUB_ENV"
+          cp LICENSE "$bundle/"
+          printf 'App commit: %s\nFlutter commit: %s\nEngine: %s\n' "$GITHUB_SHA" "$FLUTTER_GTK4_SHA" "$FLUTTER_PREBUILT_ENGINE_VERSION" > "$bundle/BUILD_INFO.txt"
+          tar -C build/linux-gtk4/x64/release -czf "mooshrevolt-linux-gtk4-x64-$version.tar.gz" bundle
+          sha256sum "mooshrevolt-linux-gtk4-x64-$version.tar.gz" > "mooshrevolt-linux-gtk4-x64-$version.tar.gz.sha256"
+      - name: Upload GTK4 native bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: mooshrevolt-linux-gtk4-x64
+          path: mooshrevolt-linux-gtk4-x64-*.tar.gz*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build GTK4 Flatpak
+        run: |
+          bash tools/build_flatpak_gtk4.sh --bundle-dir build/linux-gtk4/x64/release/bundle --out-dir "$RUNNER_TEMP/mooshrevolt-flatpak-gtk4"
+          cp "$RUNNER_TEMP/mooshrevolt-flatpak-gtk4/ca.richyoung.mooshrevolt.gtk4.flatpak" "mooshrevolt-gtk4-x64-$ARTIFACT_VERSION.flatpak"
+          sha256sum "mooshrevolt-gtk4-x64-$ARTIFACT_VERSION.flatpak" > "mooshrevolt-gtk4-x64-$ARTIFACT_VERSION.flatpak.sha256"
+      - name: Upload GTK4 Flatpak
+        uses: actions/upload-artifact@v6
+        with:
+          name: mooshrevolt-flatpak-gtk4-x64
+          path: mooshrevolt-gtk4-x64-*.flatpak*
+          if-no-files-found: error
+          retention-days: 14
