@@ -6,17 +6,42 @@ APP_ID="ca.richyoung.mooshrevolt"
 GTK_VARIANT=gtk3
 OUT_DIR="$ROOT_DIR/build"
 HOST_BUNDLE_DIR="$ROOT_DIR/build/linux/x64/release/bundle"
+
+usage() {
+  cat <<'EOF'
+Usage: ./tools/build_flatpak_container.sh [--gtk gtk3|gtk4] [--out-dir PATH] [--bundle-dir PATH]
+
+  --gtk VARIANT     Select the GTK variant (default: gtk3).
+  --out-dir PATH    Store builder files, cache, repository, and bundle under PATH
+                    (default: build/ in the project).
+  --bundle-dir PATH Package an existing release bundle
+                    (default: build/linux/x64/release/bundle).
+EOF
+}
+
 while (( $# )); do
   case "$1" in
     --gtk|--out-dir|--bundle-dir)
-      if (( $# < 2 )); then echo "$1 requires a value" >&2; exit 2; fi
+      if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
+        echo "$1 requires a value" >&2; exit 2
+      fi
       case "$1" in
         --gtk) GTK_VARIANT="$2" ;;
         --out-dir) OUT_DIR="$2" ;;
         --bundle-dir) HOST_BUNDLE_DIR="$2" ;;
       esac
       shift 2 ;;
-    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    --gtk=*|--out-dir=*|--bundle-dir=*)
+      value="${1#*=}"
+      if [[ -z "$value" ]]; then echo "${1%%=*} requires a value" >&2; exit 2; fi
+      case "$1" in
+        --gtk=*) GTK_VARIANT="$value" ;;
+        --out-dir=*) OUT_DIR="$value" ;;
+        --bundle-dir=*) HOST_BUNDLE_DIR="$value" ;;
+      esac
+      shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 case "$GTK_VARIANT" in
@@ -51,8 +76,6 @@ else
 fi
 
 IMAGE="ghcr.io/flathub-infra/flatpak-builder-lint:latest"
-
-mkdir -p "$ROOT_DIR/build"
 
 if [[ ! -f "$HOST_BUNDLE_DIR/mooshrevolt" ]]; then
   echo "Missing $HOST_BUNDLE_DIR/mooshrevolt. Run: flutter build linux --release" >&2

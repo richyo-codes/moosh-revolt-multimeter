@@ -7,13 +7,31 @@ manifest="$root_dir/flatpak/$app_id.gtk4.yml"
 output_dir="$root_dir/build/linux-gtk4/flatpak-output"
 bundle_dir=""
 
+usage() {
+  cat <<'EOF'
+Usage: ./tools/build_flatpak_gtk4.sh [--out-dir PATH] [--bundle-dir PATH]
+
+  --out-dir PATH    Store staging files, builder files, cache, repository, and
+                    bundle under PATH (default: build/linux-gtk4/flatpak-output).
+  --bundle-dir PATH Package an existing release bundle instead of building it.
+EOF
+}
+
 while (( $# )); do
   case "$1" in
     --out-dir|--bundle-dir)
-      if (( $# < 2 )); then echo "$1 requires a path" >&2; exit 2; fi
+      if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
+        echo "$1 requires a path" >&2; exit 2
+      fi
       if [[ "$1" == --out-dir ]]; then output_dir="$2"; else bundle_dir="$2"; fi
       shift 2 ;;
-    *) echo "Usage: $0 [--out-dir PATH] [--bundle-dir PATH]" >&2; exit 2 ;;
+    --out-dir=*|--bundle-dir=*)
+      value="${1#*=}"
+      if [[ -z "$value" ]]; then echo "${1%%=*} requires a path" >&2; exit 2; fi
+      if [[ "$1" == --out-dir=* ]]; then output_dir="$value"; else bundle_dir="$value"; fi
+      shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
@@ -29,8 +47,9 @@ test -x "$bundle_dir/mooshrevolt"
 
 # Stage independently of the native package bundle. Resolve only libraries
 # missing from the runtime, including native JNI dependencies.
-mkdir -p "$root_dir/build/linux-gtk4"
-staging_dir="$(mktemp -d "$root_dir/build/linux-gtk4/flatpak-stage.XXXXXX")"
+mkdir -p "$output_dir"
+output_dir="$(cd "$output_dir" && pwd -P)"
+staging_dir="$(mktemp -d "$output_dir/flatpak-stage.XXXXXX")"
 trap 'rm -rf "$staging_dir"' EXIT
 mkdir -p "$staging_dir/bundle"
 cp -a "$bundle_dir/." "$staging_dir/bundle/"
@@ -111,8 +130,6 @@ text = text.replace('path: ../LICENSE', 'path: LICENSE')
 Path(target).write_text(text)
 PY
 
-mkdir -p "$output_dir"
-output_dir="$(cd "$output_dir" && pwd)"
 builder_args=(--disable-rofiles-fuse --force-clean)
 flatpak-builder "$flatpak_scope" "${builder_args[@]}" --state-dir="$output_dir/state" --repo="$output_dir/repo" \
   "$output_dir/build" "$staging_dir/manifest.yml"
