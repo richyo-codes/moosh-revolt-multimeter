@@ -23,6 +23,33 @@ Flathub Freedesktop 25.08 SDK/runtime:
 flatpak install --user --reinstall build/ca.richyoung.mooshrevolt.flatpak
 ```
 
+Use `--out-dir` to put the Flatpak builder's working directory, state/cache,
+export repository, and final bundle on another disk:
+
+```sh
+./tools/build_flatpak.sh --out-dir /path/to/flatpak-work/mooshrevolt-gtk3
+```
+
+That directory contains `flatpak/`, `flatpak-state/`, `flatpak-repo/`, and
+`ca.richyoung.mooshrevolt.flatpak`. The default is the project's `build/`
+directory. Relative paths resolve from the directory where you run the command;
+paths with spaces must be quoted. The Flutter release bundle stays in
+`build/linux/x64/release/bundle`; add `--skip-build` to reuse it, for example:
+
+```sh
+./tools/build_flatpak.sh --out-dir /path/to/flatpak-work/mooshrevolt-gtk3 --skip-build
+```
+
+The container helper supports the same output option:
+
+```sh
+./tools/build_flatpak_container.sh --out-dir /path/to/flatpak-work/mooshrevolt-container
+```
+
+It packages an existing release bundle and needs Podman or Docker. Use a separate
+output directory for each GTK variant and for host versus container builds.
+For GTK4, see [GTK4 Flatpak builds](gtk4.md#gtk4-flatpak).
+
 The Flatpak uses the system BlueZ D-Bus service for Bluetooth LE access. Release
 artifacts include a Flatpak bundle when the release workflow completes.
 

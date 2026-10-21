@@ -42,6 +42,24 @@ flatpak run ca.richyoung.mooshrevolt//gtk4
 
 Omit `--bundle-dir` to build the release app first. CI uses a privileged
 Flatpak builder container when ordinary sandbox creation is restricted.
+Use `--out-dir` to choose where all Flatpak work is stored, including temporary
+staging files, builder state/cache, repository, and the final bundle:
+
+```sh
+bash tools/build_flatpak_gtk4.sh \
+  --bundle-dir build/linux-gtk4/x64/release/bundle \
+  --out-dir /path/to/flatpak-work/mooshrevolt-gtk4
+```
+
+The default is `build/linux-gtk4/flatpak-output` in the project. Host builds put
+builder files in `build/`, `state/`, and `repo/` under that directory; container
+builds use `flatpak/`, `flatpak-state/`, and `flatpak-repo/`. Both write
+`ca.richyoung.mooshrevolt.gtk4.flatpak` directly in the output directory. Temporary
+staging files are removed when the script exits. Relative output paths resolve
+from the calling directory. Use separate output directories for each variant
+and for host versus container builds. The option is also forwarded to the
+container builder in CI.
+
 The `gtk4` branch is distinct from the existing GTK3 Flatpak. The sandbox
 retains system D-Bus access to `org.bluez` for BLE and does not need access
 to arbitrary host files. A successful UI launch does not prove access to a
