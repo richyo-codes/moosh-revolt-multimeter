@@ -16,6 +16,8 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    - .flatpak-builder
+    - .flatpak-builder/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
