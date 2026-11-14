@@ -8,6 +8,7 @@ import 'package:moosh_revolt/screens/settings_screen.dart';
 import 'package:moosh_revolt/screens/about_screen.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
+import 'package:moosh_revolt/services/startup_autoconnect.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
 
 // --- Shared service instances & navigation key ---
@@ -103,6 +104,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   BleDevice? _connectedDevice;
+  bool _startupDiscovery = false;
 
   // --- Home page logging ---
   final String _homeLogPrefix = '[HOME]';
@@ -111,121 +113,32 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _startupDiscovery = widget.enableBle && !widget.mockMode;
     _homeLog('initState — calling _tryAutoConnect');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!widget.enableBle) return;
+      if (!_startupDiscovery) return;
       _homeLog('addPostFrameCallback — starting auto-connect');
-      _tryAutoConnect();
+      _tryAutoConnect().whenComplete(() {
+        if (mounted) setState(() => _startupDiscovery = false);
+      });
     });
   }
 
-  /// Attempt to auto-connect to a remembered or already-connected device on app launch.
+  /// Attempt to connect only to an enabled, remembered address on launch.
   Future<void> _tryAutoConnect() async {
-    _homeLog('>>> _tryAutoConnect START');
-    if (!mounted) {
-      _homeLog('    not mounted, aborting');
-      return;
-    }
-
-    final settings = context.read<SettingsProvider>();
-    _homeLog(
-      '    autoConnect=${settings.autoConnect} rememberedCount=${settings.rememberedDeviceCount}',
-    );
-    if (!settings.autoConnect) {
-      _homeLog('    autoConnect disabled, aborting');
-      return;
-    }
-
-    // Step 1: Check for already-connected Mooshimeter devices
-    _homeLog('>>> Step 1: checking already-connected devices');
+    if (!mounted) return;
     try {
-      final connectedDevices = await UniversalBle.getSystemDevices(
-        withServices: [],
+      final device = await findStartupDevice(
+        settings: context.read<SettingsProvider>(),
+        systemDevices: () => UniversalBle.getSystemDevices(withServices: []),
+        scanStream: UniversalBle.scanStream,
+        startScan: () => UniversalBle.startScan(),
+        stopScan: UniversalBle.stopScan,
       );
-      _homeLog(
-        '    connectedDevices returned, count=${connectedDevices.length}',
-      );
-
-      for (final device in connectedDevices) {
-        final name = (device.name ?? '').toLowerCase();
-        _homeLog('      checking: "${device.name}" addr=${device.deviceId}');
-        if (name.contains('mooshimeter') || name.contains('mooshim')) {
-          _homeLog('    ✓ BLE MOOSHIIMETER DETECTED: ${device.name}');
-          // Verify this device is remembered before auto-navigating
-          final remembered = settings.getRemembered(device.deviceId);
-          _homeLog('      remembered=${remembered != null}');
-          if (remembered != null) {
-            _homeLog('    ✓ remembered, calling _doConnect');
-            await _doConnect(device);
-            _homeLog('<<< _tryAutoConnect (via connected)');
-            return;
-          }
-        }
-      }
-      _homeLog('    no mooshimeter in connectedDevices');
-    } catch (e) {
-      _homeLog('>>> Step 1 FAILED: $e');
+      if (device != null && mounted) await _doConnect(device);
+    } catch (error) {
+      _homeLog('Startup discovery failed: $error');
     }
-
-    // Step 2: Fall back to scanning for remembered devices
-    _homeLog('>>> Step 2: scanning for remembered devices');
-    if (settings.rememberedDeviceCount == 0) {
-      _homeLog('    no remembered devices, aborting');
-      _homeLog('<<< _tryAutoConnect (no remembered devices)');
-      return;
-    }
-
-    final remembered = settings.getFirstRemembered();
-    if (remembered == null) {
-      _homeLog('    getFirstRemembered returned null');
-      _homeLog('<<< _tryAutoConnect (null remembered)');
-      return;
-    }
-
-    _homeLog('    remembered=${remembered.name} addr=${remembered.address}');
-
-    BleDevice? found;
-    try {
-      _homeLog('    stopping any existing scan');
-      await UniversalBle.stopScan().catchError((_) {});
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      _homeLog('    starting scan (5s)');
-      await UniversalBle.startScan();
-
-      _homeLog('    scanning...');
-      await for (final bleDevice in UniversalBle.scanStream) {
-        final addr = bleDevice.deviceId.toLowerCase();
-        final name = (bleDevice.name ?? '').toLowerCase();
-        final target = remembered.address.toLowerCase();
-
-        _homeLog(
-          '      checking: "${bleDevice.name}" addr="$addr" match=${addr == target}',
-        );
-
-        if (addr == target ||
-            name.contains(remembered.name.toLowerCase().split(' ').first) ||
-            name.contains('mooshim')) {
-          _homeLog('    ✓ MATCH FOUND!');
-          found = bleDevice;
-          break;
-        }
-      }
-      _homeLog('    scan loop ended, found=${found != null}');
-    } catch (e) {
-      _homeLog('>>> Step 2 FAILED: $e');
-    } finally {
-      _homeLog('    cleanup: stopping scan');
-      await UniversalBle.stopScan().catchError((_) {});
-    }
-
-    if (found != null) {
-      _homeLog('    calling _doConnect');
-      await _doConnect(found);
-    } else {
-      _homeLog('>>> _tryAutoConnect FAILED: no device found');
-    }
-    _homeLog('<<< _tryAutoConnect END');
   }
 
   Future<bool> _doConnect(BleDevice device) async {
@@ -288,6 +201,11 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     if (widget.mockMode) {
       return DeviceScreen(device: mockBleProvider!.device);
+    }
+    // Discovery owns the BLE scan until its deadline. Do not mount ScanScreen
+    // yet: its automatic/manual scan would compete with startup discovery.
+    if (_startupDiscovery) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return ScanScreen(
       onDeviceSelected: _onDeviceSelected,
