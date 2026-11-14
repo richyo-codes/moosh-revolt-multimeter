@@ -12,8 +12,9 @@ Use a checkout of `https://github.com/richyo-codes/flutter.git`, branch
 
 ```sh
 export FLUTTER_BIN=/path/to/flutter-fork/bin/flutter
-export FLUTTER_PREBUILT_ENGINE_VERSION=e0462bb4b7f33fb7bf4c59ba2a73cfa1d0385ce1
-export FLUTTER_ENGINE_STORAGE_BASE_URL=https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
+export FLUTTER_PREBUILT_ENGINE_VERSION=f2b4375245d63bdb7007d42b4032e0e8d079780c
+export FLUTTER_STORAGE_BASE_URL=https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
+export FLUTTER_ENGINE_STORAGE_BASE_URL="$FLUTTER_STORAGE_BASE_URL"
 FLUTTER_STORAGE_BASE_URL="$FLUTTER_ENGINE_STORAGE_BASE_URL" "$FLUTTER_BIN" --version
 bash tools/install_gtk4_prebuilt_engine.sh /path/to/flutter-fork
 bash tools/flutter_linux.sh gtk4 build --release
@@ -69,9 +70,7 @@ host after installing the Flatpak.
 ## Artifact compatibility
 
 The installer verifies that the engine's `gen_snapshot` and the downloaded Dart
-SDK report the same version. Engine `e0462bb4b7f33fb7bf4c59ba2a73cfa1d0385ce1`
-was observed shipping `gen_snapshot` version `3.15.0-47.0.dev` with SDK
-`3.15.0-27.0.dev`. Release builds fail during AOT snapshot generation with
-`ApiError`; the artifact publisher needs to rebuild or republish the matching
-SDK and engine archives. The previous engine `409396163af31148a9f408ecd1db41acdb1e0e76`
-passed the native GTK4 and Flatpak builds during this port.
+SDK report the same version. The current artifact pin is
+`f2b4375245d63bdb7007d42b4032e0e8d079780c`. Source the exports above before
+invoking Flutter or FVM so SDK initialization and the Linux archive installer
+use the same mirror.
