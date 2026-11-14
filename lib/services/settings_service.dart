@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
+import 'package:moosh_revolt/services/startup_config.dart';
 
 /// Manages app-wide settings using [shared_preferences].
 /// Extends [ChangeNotifier] so screens can [context.watch] settings
@@ -33,6 +34,7 @@ class SettingsProvider extends ChangeNotifier {
 
   // --- Remembered Devices ---
   List<RememberedDevice> _rememberedDevices = [];
+  bool _operatorDeviceList = false;
 
   // --- Getters ---
 
@@ -48,7 +50,9 @@ class SettingsProvider extends ChangeNotifier {
 
   // --- Initialization ---
 
-  Future<void> init() async {
+  Future<void> init({StartupConfig? configuration}) async {
+    // Invalid operator configuration must not fall back to saved meter targets.
+    final config = configuration ?? await StartupConfig.load();
     _prefs = await SharedPreferences.getInstance();
     final savedLanguage = _prefs?.getString('language_code');
     _languageCode = ['en', 'fr'].contains(savedLanguage) ? savedLanguage : null;
@@ -61,6 +65,7 @@ class SettingsProvider extends ChangeNotifier {
     _showFloatingReadings = _prefs?.getBool('show_floating_readings') ?? false;
 
     // Load remembered devices
+    _rememberedDevices = [];
     final raw = _prefs?.getString('remembered_devices');
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -74,6 +79,16 @@ class SettingsProvider extends ChangeNotifier {
       }
     }
 
+    final values = config.values;
+    _autoConnect = values['autoConnect'] as bool? ?? _autoConnect;
+    _skipUpgrade = values['skipUpgrade'] as bool? ?? _skipUpgrade;
+    _sampleRate = values['sampleRateHz'] as int? ?? _sampleRate;
+    _graphMaxPoints = values['graphMaxPoints'] as int? ?? _graphMaxPoints;
+    _darkMode = values['darkMode'] as bool? ?? _darkMode;
+    _showFloatingReadings =
+        values['showFloatingReadings'] as bool? ?? _showFloatingReadings;
+    _operatorDeviceList = config.rememberedDevices != null;
+    _rememberedDevices = config.rememberedDevices ?? _rememberedDevices;
     notifyListeners();
   }
 
@@ -123,17 +138,19 @@ class SettingsProvider extends ChangeNotifier {
   // --- Remembered Device Helpers ---
 
   bool isRemembered(String address) {
-    return _rememberedDevices.any((d) => d.address == address);
+    return getRemembered(address) != null;
   }
 
   RememberedDevice? getRemembered(String address) {
-    return _rememberedDevices.where((d) => d.address == address).firstOrNull;
+    return _rememberedDevices
+        .where((d) => d.address.toLowerCase() == address.toLowerCase())
+        .firstOrNull;
   }
 
   /// Remember a device. If already remembered, updates the name.
   Future<bool> rememberDevice(String address, String name) async {
     final existingIdx = _rememberedDevices.indexWhere(
-      (d) => d.address == address,
+      (d) => d.address.toLowerCase() == address.toLowerCase(),
     );
 
     if (existingIdx >= 0) {
@@ -160,13 +177,17 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Unremember a device by address.
   Future<bool> unrememberDevice(String address) async {
-    _rememberedDevices.removeWhere((d) => d.address == address);
+    _rememberedDevices.removeWhere(
+      (d) => d.address.toLowerCase() == address.toLowerCase(),
+    );
     return _persistRememberedDevices();
   }
 
   /// Toggle autoConnect flag for a remembered device.
   Future<bool> toggleDeviceAutoConnect(String address) async {
-    final idx = _rememberedDevices.indexWhere((d) => d.address == address);
+    final idx = _rememberedDevices.indexWhere(
+      (d) => d.address.toLowerCase() == address.toLowerCase(),
+    );
     if (idx < 0) return false;
 
     final dev = _rememberedDevices[idx];
@@ -180,6 +201,12 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<bool> _persistRememberedDevices() async {
+    // Connecting automatically calls rememberDevice. Never copy the operator's
+    // list (including UI edits to it) into the user's saved device preferences.
+    if (_operatorDeviceList) {
+      notifyListeners();
+      return true;
+    }
     if (_prefs == null) return false;
     final jsonList = _rememberedDevices.map((d) => d.toJson()).toList();
     final success = await _prefs!.setString(
@@ -205,11 +232,6 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Get the first remembered device (for auto-connect).
   RememberedDevice? getFirstRemembered() {
-    if (_rememberedDevices.isEmpty) return null;
-    // Prefer one marked autoConnect, otherwise the first one
-    return _rememberedDevices.firstWhere(
-      (d) => d.autoConnect,
-      orElse: () => _rememberedDevices.first,
-    );
+    return _rememberedDevices.where((d) => d.autoConnect).firstOrNull;
   }
 }

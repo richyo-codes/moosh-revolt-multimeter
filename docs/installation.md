@@ -13,6 +13,9 @@ flutter pub get
 flutter run -d linux
 ```
 
+Appliance images can supply [operator startup configuration](operator-config.md)
+for remembered meters, autoconnect, sample rate, graph history, and appearance.
+
 ### Flatpak
 
 Locally built Flatpak bundles require `flatpak`, `flatpak-builder`, and the
