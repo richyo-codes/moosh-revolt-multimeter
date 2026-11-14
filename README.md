@@ -44,6 +44,20 @@ are welcome.
 This is early software. Verify readings independently before using it for
 safety-critical, high-voltage, or other consequential work.
 
+## Contributors
+
+Thank you to the people helping improve MooshRevolt:
+
+- [Richard Young](https://github.com/richyo-codes) — project creator and maintainer.
+- [sorny](https://github.com/sorny) — macOS support, measurement and UI improvements,
+  recording, and Prometheus integration developed in the
+  [sorny fork](https://github.com/sorny/moosh-revolt-multimeter). Integration into
+  this repository is being evaluated.
+
+Thanks also to everyone who reports bugs, tests with real meters, and contributes
+translations, documentation, and fixes. Git history records authorship for
+individual contributions.
+
 ## License
 
 Copyright 2026 Richard Young. Licensed under the
