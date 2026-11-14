@@ -1,6 +1,9 @@
 import 'package:moosh_revolt/l10n/localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
+import 'package:moosh_revolt/services/prometheus_exporter.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/screens/about_screen.dart';
 
@@ -17,26 +20,6 @@ class SettingsScreen extends StatelessWidget {
           return ListView(
             padding: EdgeInsets.all(16),
             children: [
-              ListTile(
-                title: Text(context.l10n.language),
-                leading: const Icon(Icons.language),
-                trailing: DropdownButton<String>(
-                  value: settings.locale?.languageCode ?? 'system',
-                  onChanged: (value) =>
-                      settings.languageCode = value == 'system' ? null : value,
-                  items: [
-                    DropdownMenuItem(
-                      value: 'system',
-                      child: Text(context.l10n.systemLanguage),
-                    ),
-                    const DropdownMenuItem(value: 'en', child: Text('English')),
-                    const DropdownMenuItem(
-                      value: 'fr',
-                      child: Text('Français'),
-                    ),
-                  ],
-                ),
-              ),
               // --- Connection ---
               Text(
                 context.l10n.connection,
@@ -54,14 +37,34 @@ class SettingsScreen extends StatelessWidget {
                 onChanged: (v) => settings.autoConnect = v,
               ),
               SwitchListTile(
-                title: Text(context.l10n.skipFirmware),
-                subtitle: Text(context.l10n.skipFirmwareHelp),
-                value: settings.skipUpgrade,
-                onChanged: (v) => settings.skipUpgrade = v,
+                title: Text('Reconnect automatically'),
+                subtitle: Text(
+                  'Re-establish the link when the meter drops out of range',
+                ),
+                value: settings.autoReconnect,
+                onChanged: (v) => settings.autoReconnect = v,
               ),
 
               Divider(height: 32),
 
+              ListTile(
+                title: Text(context.l10n.language),
+                trailing: DropdownButton<String?>(
+                  value: settings.locale?.languageCode,
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(context.l10n.systemLanguage),
+                    ),
+                    const DropdownMenuItem(value: 'en', child: Text('English')),
+                    const DropdownMenuItem(
+                      value: 'fr',
+                      child: Text('Français'),
+                    ),
+                  ],
+                  onChanged: (value) => settings.languageCode = value,
+                ),
+              ),
               // --- Appearance ---
               Text(
                 context.l10n.appearance,
@@ -72,11 +75,46 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 8),
-              SwitchListTile(
-                title: Text(context.l10n.darkMode),
-                subtitle: Text(context.l10n.darkModeHelp),
-                value: settings.themeMode == ThemeMode.dark,
-                onChanged: (_) => settings.toggleTheme(),
+              ListTile(
+                title: Text('Theme'),
+                subtitle: Text('System follows your OS appearance'),
+                trailing: SegmentedButton<ThemeMode>(
+                  segments: [
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto),
+                      tooltip: 'System',
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode),
+                      tooltip: 'Light',
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode),
+                      tooltip: 'Dark',
+                    ),
+                  ],
+                  selected: {settings.themeMode},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      settings.themeMode = selection.single,
+                ),
+              ),
+              ListTile(
+                title: Text('Temperature'),
+                subtitle: Text('Unit for the meter\'s internal temperature'),
+                trailing: SegmentedButton<TemperatureUnit>(
+                  segments: [
+                    for (final unit in TemperatureUnit.values)
+                      ButtonSegment(value: unit, label: Text(unit.symbol)),
+                  ],
+                  selected: {settings.temperatureUnit},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      settings.temperatureUnit = selection.single,
+                ),
               ),
               SwitchListTile(
                 title: Text(context.l10n.showFloating),
@@ -110,7 +148,7 @@ class SettingsScreen extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.only(left: 16, bottom: 16),
                   child: Text(
-                    context.l10n.noRemembered,
+                    'No devices remembered yet. Connect to a device and tap context.l10n.remember to save it.',
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
@@ -131,7 +169,7 @@ class SettingsScreen extends StatelessWidget {
                             builder: (ctx) => AlertDialog(
                               title: Text(context.l10n.forgetQuestion),
                               content: Text(
-                                context.l10n.removeDevice(dev.name),
+                                'Remove "${dev.name}" from remembered devices?',
                               ),
                               actions: [
                                 TextButton(
@@ -151,11 +189,7 @@ class SettingsScreen extends StatelessWidget {
                       await settings.unrememberDevice(dev.address);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              context.l10n.deviceForgotten(dev.name),
-                            ),
-                          ),
+                          SnackBar(content: Text('${dev.name} forgotten')),
                         );
                       }
                     },
@@ -179,11 +213,7 @@ class SettingsScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              context.l10n.rememberedDate(
-                                MaterialLocalizations.of(
-                                  context,
-                                ).formatMediumDate(dev.rememberedAt),
-                              ),
+                              'Remembered: ${dev.rememberedAt.toLocaleStringShort()}',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey.shade600,
@@ -231,24 +261,60 @@ class SettingsScreen extends StatelessWidget {
               SizedBox(height: 8),
               ListTile(
                 title: Text(context.l10n.defaultSampleRate),
-                subtitle: Text('${settings.sampleRate} Hz'),
-                trailing: PopupMenuButton<int>(
-                  onSelected: (rate) => settings.sampleRate = rate,
-                  itemBuilder: (_) => [125, 250, 500, 1000, 2000, 4000, 8000]
-                      .map((r) => PopupMenuItem(value: r, child: Text('$r Hz')))
+                subtitle: Text('Auto uses 125 Hz for DC and 4 kHz for AC'),
+                // 0 stands for Auto in the menu; the setting stores null.
+                trailing: DropdownButton<int>(
+                  value: settings.sampleRate ?? 0,
+                  underline: SizedBox.shrink(),
+                  onChanged: (rate) =>
+                      settings.sampleRate = rate == 0 ? null : rate,
+                  items: [0, 125, 250, 500, 1000, 2000, 4000, 8000]
+                      .map(
+                        (r) => DropdownMenuItem(
+                          value: r,
+                          child: Text(r == 0 ? context.l10n.auto : '$r Hz'),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
               ListTile(
-                title: Text(context.l10n.maxGraphPoints),
-                subtitle: Text('${settings.graphMaxPoints}'),
-                trailing: PopupMenuButton<int>(
-                  onSelected: (points) => settings.graphMaxPoints = points,
-                  itemBuilder: (_) => [100, 300, 500, 1000, 3000]
-                      .map((p) => PopupMenuItem(value: p, child: Text('$p')))
+                title: Text('Chart history'),
+                subtitle: Text('How much time the live chart keeps'),
+                trailing: DropdownButton<Duration>(
+                  value:
+                      SettingsProvider.chartWindows.contains(
+                        settings.chartWindow,
+                      )
+                      ? settings.chartWindow
+                      : null,
+                  underline: SizedBox.shrink(),
+                  onChanged: (window) {
+                    if (window != null) settings.chartWindow = window;
+                  },
+                  items: SettingsProvider.chartWindows
+                      .map(
+                        (w) => DropdownMenuItem(
+                          value: w,
+                          child: Text(formatChartWindow(w)),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
+              Divider(height: 32),
+
+              // --- Integrations ---
+              Text(
+                'Integrations',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              SizedBox(height: 8),
+              const _PrometheusSettings(),
               Divider(height: 32),
 
               // --- About ---
@@ -271,17 +337,102 @@ class SettingsScreen extends StatelessWidget {
                 ).push(MaterialPageRoute<void>(builder: (_) => AboutScreen())),
               ),
               ListTile(
-                title: Text(context.l10n.serviceUuids),
-                subtitle: Text('1BC5FFA0-0200-62AB-E411-F254E005DBD4'),
+                title: Text('BLE service UUID'),
+                subtitle: Text(_serviceUuid),
                 trailing: Icon(Icons.copy, size: 16),
-                onTap: () {
-                  // TODO: Clipboard copy
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: _serviceUuid));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Service UUID copied')),
+                    );
+                  }
                 },
               ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Short date formatter.
+extension on DateTime {
+  String toLocaleStringShort() {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[month - 1]} $day, ${year.toString().substring(2)} ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+  }
+}
+
+const _serviceUuid = '1BC5FFA0-0200-62AB-E411-F254E005DBD4';
+
+/// Prometheus exporter controls with the live endpoint status.
+class _PrometheusSettings extends StatelessWidget {
+  const _PrometheusSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    // The exporter is absent in widget tests that only provide settings.
+    final exporter = context.watch<PrometheusExporter?>();
+    final status = !settings.exporterEnabled
+        ? 'Serve live readings at /metrics for Prometheus or Grafana'
+        : exporter?.error ??
+              (exporter?.url != null
+                  ? 'Serving ${exporter!.url}'
+                  : 'Starting…');
+    return Column(
+      children: [
+        SwitchListTile(
+          title: Text('Prometheus exporter'),
+          subtitle: Text(status),
+          value: settings.exporterEnabled,
+          onChanged: (enabled) => settings.exporterEnabled = enabled,
+        ),
+        if (settings.exporterEnabled) ...[
+          ListTile(
+            title: Text('Port'),
+            trailing: SizedBox(
+              width: 96,
+              child: TextFormField(
+                key: ValueKey('exporter-port-${settings.exporterPort}'),
+                initialValue: '${settings.exporterPort}',
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.end,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(isDense: true),
+                onFieldSubmitted: (text) {
+                  final port = int.tryParse(text);
+                  if (port != null) settings.exporterPort = port;
+                },
+              ),
+            ),
+          ),
+          SwitchListTile(
+            title: Text('Allow access from other devices'),
+            subtitle: Text(
+              'Anyone on your network can read the measurements. Off '
+              'serves this computer only.',
+            ),
+            value: settings.exporterAllowRemote,
+            onChanged: (allow) => settings.exporterAllowRemote = allow,
+          ),
+        ],
+      ],
     );
   }
 }

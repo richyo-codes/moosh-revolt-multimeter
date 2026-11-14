@@ -30,13 +30,13 @@ void main() {
 
     expect(find.text('—'), findsOneWidget);
     expect(find.text('Near zero · possibly floating'), findsOneWidget);
-    expect(find.text('0.00000'), findsNothing);
+    expect(find.text('0.000'), findsNothing);
   });
 
   testWidgets('floating value can be shown with the override', (tester) async {
     await tester.pumpWidget(_display(showFloatingValues: true));
 
-    expect(find.text('0.00000'), findsOneWidget);
+    expect(find.text('0.000'), findsOneWidget);
     expect(find.text('Near zero · possibly floating'), findsOneWidget);
   });
 
@@ -57,14 +57,16 @@ void main() {
 
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('Waiting for a fresh sample'), findsNWidgets(2));
-    expect(find.text('2.50000'), findsNothing);
+    expect(find.text('2.500'), findsNothing);
   });
 
   testWidgets('hides an unused channel card completely', (tester) async {
     await tester.pumpWidget(_display(showCh1: false));
 
-    expect(find.text('CH1 · Current DC'), findsNothing);
-    expect(find.text('CH2 · Voltage DC'), findsOneWidget);
+    expect(find.text('Current DC'), findsNothing);
+    // Cards lead with the measurement and name the channel and its jack.
+    expect(find.text('Voltage DC'), findsOneWidget);
+    expect(find.text('CH2 · V jack + C'), findsOneWidget);
     expect(find.byKey(const ValueKey('channel-readings-none')), findsNothing);
   });
 
@@ -100,7 +102,7 @@ void main() {
 
     expect(find.text('Units: Auto'), findsNWidgets(2));
     expect(
-      find.byTooltip('Display units: Auto chooses an SI prefix'),
+      find.byTooltip('Display units: Auto follows the active range'),
       findsNWidgets(2),
     );
   });

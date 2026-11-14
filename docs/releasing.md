@@ -7,20 +7,49 @@ Flutter container tag while satisfying this project's `^3.12.2` Dart SDK
 constraint.
 
 Pushes and pull requests resolve dependencies, analyze and test the app,
-compile the CSV logger, and build Linux plus Android debug artifacts. A `v*`
-tag creates a draft GitHub release with a Linux bundle and signed Android APK
-with SHA-256 checksums.
+compile the CSV logger, and build Linux plus Android debug artifacts. On
+GitHub, CI also builds an unsigned macOS app bundle; Gitea skips that job
+because its Docker-based runner has no macOS host. A `v*`
+tag creates a draft release. Linux, Android, GTK3 Flatpak, GTK4, and macOS
+builds must succeed before the publishing job verifies checksums and makes
+the GitHub release public. See [tagged releases](releases.md).
 
-Flatpak packaging runs in a separate optional job. It downloads the archived
-Linux bundle from the build job and uses `tools/build_flatpak.sh --skip-build`,
-so it needs no Flutter installation or recompilation. A successful tagged
-Flatpak job attaches its bundle and checksum to the existing release. A failed
-Flatpak job does not block Linux/Android artifacts or release creation.
-The Flatpak runner still needs permission to create Bubblewrap namespaces.
+Flatpak packaging reuses the archived Linux bundle with
+`tools/build_flatpak.sh --skip-build`; GTK4 uses its separately pinned SDK.
 
 For Gitea, enable repository Actions and register an Act Runner with Docker
 access. Configure a `GITEA_TOKEN` repository secret with release-creation
 permission.
+
+On GitHub, tagged releases also attach `MooshRevolt-<version>-macos.dmg`,
+built by [`tools/build_dmg.sh`](../tools/build_dmg.sh). The image is signed
+and notarized when these optional secrets are set; without them it carries
+an ad-hoc signature and users allow it once in System Settings:
+
+- `MACOS_CERTIFICATE_P12_BASE64` and `MACOS_CERTIFICATE_PASSWORD`: a
+  "Developer ID Application" certificate exported as `.p12`
+- `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` (an app-specific
+  password) for notarization
+
+## App icon
+
+Every platform icon is rendered from
+[`assets/branding/mooshrevolt_icon.svg`](../assets/branding/mooshrevolt_icon.svg),
+which shows the Mooshimeter's translucent body, board and copper jacks. After
+changing it, regenerate the macOS, Linux/Flatpak, Android, web and Windows
+icons. The logo inside the app is drawn in code
+(`lib/widgets/mooshrevolt_mark.dart`) without the tile, in the theme's
+colors, so keep the two in step:
+
+```sh
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib \
+  uv run --with cairosvg --with pillow tools/generate_icons.py
+```
+
+The script needs the Cairo library (`brew install cairo`, or `libcairo2` on
+Debian/Ubuntu).
+
+## Android signing
 
 Tagged Android releases require these repository secrets:
 

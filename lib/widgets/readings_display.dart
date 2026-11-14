@@ -1,6 +1,7 @@
 import 'package:moosh_revolt/l10n/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/models/meter_reading.dart';
+import 'package:moosh_revolt/widgets/meter_jacks.dart';
 
 /// Displays the two-channel readings prominently.
 class ReadingsDisplay extends StatelessWidget {
@@ -20,6 +21,10 @@ class ReadingsDisplay extends StatelessWidget {
   final double? ch1Maximum;
   final double? ch2Minimum;
   final double? ch2Maximum;
+  final double? ch1Average;
+  final double? ch2Average;
+  final VoidCallback? onCh1MinMaxReset;
+  final VoidCallback? onCh2MinMaxReset;
   final ValueChanged<bool>? onCh1MinMaxChanged;
   final ValueChanged<bool>? onCh2MinMaxChanged;
   final VoidCallback? onCh1Configure;
@@ -28,14 +33,29 @@ class ReadingsDisplay extends StatelessWidget {
   final bool ch2PossiblyFloating;
   final String ch1Units;
   final String ch2Units;
-  final double ch1Max;
-  final double ch2Max;
+
+  /// Full scale of each channel's active range, in its display unit.
+  final double? ch1Max;
+  final double? ch2Max;
+
+  /// Digits the meter resolves at its current sample rate and depth.
+  final int significantDigits;
+
+  /// Each channel's active range, for example "Auto · 60 V".
+  final String? ch1RangeLabel;
+  final String? ch2RangeLabel;
   final bool compactLayout;
   final bool stackedLayout;
   final bool showFloatingValues;
   final bool hasFreshSample;
   final bool showCh1;
   final bool showCh2;
+
+  /// Shows a hidden channel again (0 = CH1, 1 = CH2).
+  final ValueChanged<int>? onShowChannel;
+
+  /// A third card for the math channel, when one is selected.
+  final Widget? math;
 
   const ReadingsDisplay({
     super.key,
@@ -55,6 +75,10 @@ class ReadingsDisplay extends StatelessWidget {
     this.ch1Maximum,
     this.ch2Minimum,
     this.ch2Maximum,
+    this.ch1Average,
+    this.ch2Average,
+    this.onCh1MinMaxReset,
+    this.onCh2MinMaxReset,
     this.onCh1MinMaxChanged,
     this.onCh2MinMaxChanged,
     this.onCh1Configure,
@@ -63,147 +87,118 @@ class ReadingsDisplay extends StatelessWidget {
     this.ch2PossiblyFloating = false,
     this.ch1Units = 'A',
     this.ch2Units = 'V',
-    this.ch1Max = 10,
-    this.ch2Max = 600,
+    this.ch1Max,
+    this.ch2Max,
+    this.significantDigits = 5,
+    this.ch1RangeLabel,
+    this.ch2RangeLabel,
     this.compactLayout = false,
     this.stackedLayout = false,
     this.showFloatingValues = false,
     this.hasFreshSample = true,
     this.showCh1 = true,
     this.showCh2 = true,
+    this.onShowChannel,
+    this.math,
   });
+
+  Widget _reading(BuildContext context, int channel, {required bool compact}) {
+    final ch1 = channel == 0;
+    final mode = ch1 ? ch1Mode : ch2Mode;
+    return _ChannelReading(
+      label: 'CH${channel + 1} · ${mode.localizedLabel(context)}',
+      value: ch1 ? ch1Value : ch2Value,
+      units: ch1 ? ch1Units : ch2Units,
+      max: ch1 ? ch1Max : ch2Max,
+      digits: significantDigits,
+      isOutOfRange: ch1 ? ch1OutOfRange : ch2OutOfRange,
+      displayUnit: ch1 ? ch1DisplayUnit : ch2DisplayUnit,
+      onDisplayUnitChanged: ch1
+          ? onCh1DisplayUnitChanged
+          : onCh2DisplayUnitChanged,
+      minMaxTracking: ch1 ? ch1MinMaxTracking : ch2MinMaxTracking,
+      onMinMaxChanged: ch1 ? onCh1MinMaxChanged : onCh2MinMaxChanged,
+      onConfigure: ch1 ? onCh1Configure : onCh2Configure,
+      minimum: ch1 ? ch1Minimum : ch2Minimum,
+      maximum: ch1 ? ch1Maximum : ch2Maximum,
+      average: ch1 ? ch1Average : ch2Average,
+      onMinMaxReset: ch1 ? onCh1MinMaxReset : onCh2MinMaxReset,
+      possiblyFloating: ch1 ? ch1PossiblyFloating : ch2PossiblyFloating,
+      hasFreshSample: hasFreshSample,
+      color: ch1 ? Colors.red : Colors.blue,
+      compact: compact,
+      showFloatingValues: showFloatingValues,
+      rangeLabel: ch1 ? ch1RangeLabel : ch2RangeLabel,
+      title: mode.localizedLabel(context),
+      channelName: 'CH${channel + 1}',
+      jack: mode.jack,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = false;
-    final ch1 = _ChannelReading(
-      label: 'CH1 · ${ch1Mode.localizedLabel(context)}',
-      value: ch1Value,
-      units: ch1Units,
-      max: ch1Max,
-      digits: Channel.ch1.digits,
-      isOutOfRange: ch1OutOfRange,
-      displayUnit: ch1DisplayUnit,
-      onDisplayUnitChanged: onCh1DisplayUnitChanged,
-      minMaxTracking: ch1MinMaxTracking,
-      onMinMaxChanged: onCh1MinMaxChanged,
-      onConfigure: onCh1Configure,
-      minimum: ch1Minimum,
-      maximum: ch1Maximum,
-      possiblyFloating: ch1PossiblyFloating,
-      hasFreshSample: hasFreshSample,
-      color: Colors.red,
-      compact: isCompact,
-      showFloatingValues: showFloatingValues,
-    );
-    final ch2 = _ChannelReading(
-      label: 'CH2 · ${ch2Mode.localizedLabel(context)}',
-      value: ch2Value,
-      units: ch2Units,
-      max: ch2Max,
-      digits: Channel.ch2.digits,
-      isOutOfRange: ch2OutOfRange,
-      displayUnit: ch2DisplayUnit,
-      onDisplayUnitChanged: onCh2DisplayUnitChanged,
-      minMaxTracking: ch2MinMaxTracking,
-      onMinMaxChanged: onCh2MinMaxChanged,
-      onConfigure: onCh2Configure,
-      minimum: ch2Minimum,
-      maximum: ch2Maximum,
-      possiblyFloating: ch2PossiblyFloating,
-      hasFreshSample: hasFreshSample,
-      color: Colors.blue,
-      compact: isCompact,
-      showFloatingValues: showFloatingValues,
-    );
     return LayoutBuilder(
       builder: (context, constraints) {
         // Stacked cards only receive about half of this height.  Switch to the
         // compact header before their controls begin competing with the value.
         final compact = compactLayout || constraints.maxHeight < 360;
-        final compactCh1 = _ChannelReading(
-          label: 'CH1 · ${ch1Mode.localizedLabel(context)}',
-          value: ch1Value,
-          units: ch1Units,
-          max: ch1Max,
-          digits: Channel.ch1.digits,
-          isOutOfRange: ch1OutOfRange,
-          displayUnit: ch1DisplayUnit,
-          onDisplayUnitChanged: onCh1DisplayUnitChanged,
-          minMaxTracking: ch1MinMaxTracking,
-          onMinMaxChanged: onCh1MinMaxChanged,
-          onConfigure: onCh1Configure,
-          minimum: ch1Minimum,
-          maximum: ch1Maximum,
-          possiblyFloating: ch1PossiblyFloating,
-          hasFreshSample: hasFreshSample,
-          color: Colors.red,
-          compact: compact,
-          showFloatingValues: showFloatingValues,
-        );
-        final compactCh2 = _ChannelReading(
-          label: 'CH2 · ${ch2Mode.localizedLabel(context)}',
-          value: ch2Value,
-          units: ch2Units,
-          max: ch2Max,
-          digits: Channel.ch2.digits,
-          isOutOfRange: ch2OutOfRange,
-          displayUnit: ch2DisplayUnit,
-          onDisplayUnitChanged: onCh2DisplayUnitChanged,
-          minMaxTracking: ch2MinMaxTracking,
-          onMinMaxChanged: onCh2MinMaxChanged,
-          onConfigure: onCh2Configure,
-          minimum: ch2Minimum,
-          maximum: ch2Maximum,
-          possiblyFloating: ch2PossiblyFloating,
-          hasFreshSample: hasFreshSample,
-          color: Colors.blue,
-          compact: compact,
-          showFloatingValues: showFloatingValues,
-        );
-        if (!showCh1 && !showCh2) {
+        final compactCh1 = _reading(context, 0, compact: compact);
+        final compactCh2 = _reading(context, 1, compact: compact);
+        final cards = [
+          if (showCh1) _readingPanel(context, compactCh1),
+          if (showCh2) _readingPanel(context, compactCh2),
+          if (math case final math?) _readingPanel(context, math),
+        ];
+        if (!showCh1 && !showCh2 && math == null) {
           return Center(
             key: ValueKey('channel-readings-none'),
-            child: Text(context.l10n.enableChannel),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Text('Both channels are hidden'),
+                if (onShowChannel != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => onShowChannel!(0),
+                    icon: Icon(Icons.visibility, size: 18),
+                    label: Text('Show CH1'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => onShowChannel!(1),
+                    icon: Icon(Icons.visibility, size: 18),
+                    label: Text('Show CH2'),
+                  ),
+                ],
+              ],
+            ),
           );
         }
-        if (!showCh1) {
-          return _readingPanel(context, compactCh2);
-        }
-        if (!showCh2) {
-          return _readingPanel(context, compactCh1);
-        }
+        if (cards.length == 1) return cards.single;
+        List<Widget> spaced(double gap, Axis axis) => [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0)
+              SizedBox(
+                width: axis == Axis.horizontal ? gap : null,
+                height: axis == Axis.vertical ? gap : null,
+              ),
+            Expanded(child: cards[i]),
+          ],
+        ];
         if (stackedLayout || constraints.maxWidth < 450) {
           return Column(
             key: ValueKey('channel-readings-stacked'),
-            children: [
-              Expanded(
-                child: _readingPanel(context, compact ? compactCh1 : ch1),
-              ),
-              SizedBox(height: 6),
-              Expanded(
-                child: _readingPanel(context, compact ? compactCh2 : ch2),
-              ),
-            ],
-          );
-        }
-        if (compact) {
-          return Row(
-            key: ValueKey('channel-readings-compact'),
-            children: [
-              Expanded(child: _readingPanel(context, compactCh1)),
-              SizedBox(width: 4),
-              Expanded(child: _readingPanel(context, compactCh2)),
-            ],
+            children: spaced(6, Axis.vertical),
           );
         }
         return Row(
-          key: ValueKey('channel-readings-side-by-side'),
-          children: [
-            Expanded(child: _readingPanel(context, ch1)),
-            SizedBox(width: 8),
-            Expanded(child: _readingPanel(context, ch2)),
-          ],
+          key: ValueKey(
+            compact
+                ? 'channel-readings-compact'
+                : 'channel-readings-side-by-side',
+          ),
+          children: spaced(compact ? 4 : 8, Axis.horizontal),
         );
       },
     );
@@ -227,7 +222,7 @@ class _ChannelReading extends StatelessWidget {
   final String label;
   final double value;
   final String units;
-  final double max;
+  final double? max;
   final int digits;
   final bool isOutOfRange;
   final Color color;
@@ -238,10 +233,28 @@ class _ChannelReading extends StatelessWidget {
   final VoidCallback? onConfigure;
   final double? minimum;
   final double? maximum;
+
+  /// Mean of the tracked samples.
+  final double? average;
+  final VoidCallback? onMinMaxReset;
   final bool possiblyFloating;
   final bool compact;
   final bool showFloatingValues;
   final bool hasFreshSample;
+
+  /// The active range, for example "Auto · 60 V"; tapping it configures
+  /// the channel.
+  final String? rangeLabel;
+
+  /// The measurement shown as the card's title, for example context.l10n.voltageDc.
+  final String title;
+
+  /// "CH1" or "CH2".
+  final String channelName;
+
+  /// The jack the red probe goes into (A, V or Ω), or null for the internal
+  /// temperature sensor.
+  final String? jack;
 
   const _ChannelReading({
     required this.label,
@@ -258,16 +271,20 @@ class _ChannelReading extends StatelessWidget {
     this.onConfigure,
     this.minimum,
     this.maximum,
+    this.average,
+    this.onMinMaxReset,
     this.possiblyFloating = false,
     this.compact = false,
     this.showFloatingValues = false,
     this.hasFreshSample = true,
+    this.rangeLabel,
+    required this.title,
+    required this.channelName,
+    this.jack,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hideFloatingValue = possiblyFloating && !showFloatingValues;
-    final hideValue = !hasFreshSample || hideFloatingValue;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 12,
@@ -278,121 +295,76 @@ class _ChannelReading extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: compact ? 6 : 8,
-                height: compact ? 6 : 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              // Where the probes go, drawn like the case, so the channel is
+              // tied to its jack rather than to an abstract number.
+              Tooltip(
+                message: jack == null
+                    ? '$channelName measures the meter\'s internal sensor'
+                    : '$channelName: red probe in $jack, black probe in C',
+                child: jack == null
+                    ? Icon(
+                        Icons.thermostat,
+                        size: compact ? 18 : 26,
+                        color: color,
+                      )
+                    : MeterJacks(
+                        size: compact ? 18 : 26,
+                        active: (jack: jack!, color: color),
+                        showLabels: false,
+                      ),
               ),
-              SizedBox(width: compact ? 5 : 8),
+              SizedBox(width: compact ? 6 : 10),
               Expanded(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: compact ? 11 : 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: compact ? 12 : 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      jack == null
+                          ? '$channelName · internal sensor'
+                          : '$channelName · $jack jack + C',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: compact ? 10 : 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (onConfigure != null)
                 IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints.tightFor(width: 28),
-                  icon: Icon(Icons.tune, size: compact ? 14 : 18),
-                  tooltip: context.l10n.configureChannel(label),
+                  // At least 40 px, so the control is easy to hit on touch
+                  // screens even in compact cards.
+                  constraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: Icon(Icons.tune, size: compact ? 18 : 20),
+                  tooltip: 'Configure $label',
                   onPressed: onConfigure,
                 ),
-              if (compact)
-                PopupMenuButton<DisplayUnit>(
-                  tooltip: context.l10n.unitsHelp,
-                  initialValue: displayUnit,
-                  onSelected: onDisplayUnitChanged,
-                  itemBuilder: (_) => DisplayUnit.values
-                      .map(
-                        (unit) => PopupMenuItem(
-                          value: unit,
-                          child: Text(
-                            unit == DisplayUnit.auto
-                                ? context.l10n.auto
-                                : unit.label(units),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                    child: Text(
-                      displayUnit == DisplayUnit.auto
-                          ? context.l10n.unitsAuto
-                          : displayUnit.label(units),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              if (compact && onMinMaxChanged != null)
-                IconButton(
-                  isSelected: minMaxTracking,
-                  selectedIcon: Icon(Icons.swap_vert, color: color, size: 18),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints.tightFor(width: 28),
-                  icon: Icon(
-                    minMaxTracking ? Icons.swap_vert : Icons.swap_vert_outlined,
-                    size: 16,
-                  ),
-                  tooltip: minMaxTracking
-                      ? context.l10n.stopMinMax
-                      : context.l10n.trackMinMax,
-                  onPressed: () => onMinMaxChanged!(!minMaxTracking),
-                ),
+              if (compact) _compactMenu(),
             ],
           ),
           SizedBox(height: compact ? 4 : 8),
-          if (isOutOfRange)
-            Text(
-              context.l10n.outOfRange,
-              style: TextStyle(
-                fontSize: compact ? 16 : 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.orange,
-              ),
-            )
-          else
-            Row(
-              key: ValueKey('reading-value-with-unit-$label'),
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Flexible(
-                  child: Text(
-                    hideValue ? '—' : _formatValue(context),
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 20 : 36,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
-                      color: color,
-                    ),
-                  ),
-                ),
-                if (!hideValue) ...[
-                  SizedBox(width: compact ? 5 : 10),
-                  Text(
-                    _getPrefix() + units,
-                    style: TextStyle(
-                      fontSize: compact ? 14 : 18,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
+          // A meter's main affordance is the number: in a roomy card it
+          // grows to fill the space, in a tight one it shrinks to fit.
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: compact
+                  ? _valueRow(context, fontSize: 64, unitSize: 28)
+                  : _valueRow(context, fontSize: 96, unitSize: 36),
             ),
+          ),
           if (!compact)
             Padding(
               padding: EdgeInsets.only(top: compact ? 4 : 8),
@@ -400,19 +372,23 @@ class _ChannelReading extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
+                  if (rangeLabel != null)
+                    ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(Icons.speed, size: 14, color: color),
+                      label: Text(rangeLabel!),
+                      tooltip: 'Change measurement and range',
+                      onPressed: onConfigure,
+                    ),
                   PopupMenuButton<DisplayUnit>(
-                    tooltip: context.l10n.unitsHelp,
+                    tooltip: 'Display units: Auto follows the active range',
                     initialValue: displayUnit,
                     onSelected: onDisplayUnitChanged,
-                    itemBuilder: (_) => DisplayUnit.values
+                    itemBuilder: (_) => DisplayUnit.choicesFor(units)
                         .map(
                           (unit) => PopupMenuItem(
                             value: unit,
-                            child: Text(
-                              unit == DisplayUnit.auto
-                                  ? context.l10n.auto
-                                  : unit.label(units),
-                            ),
+                            child: Text(unit.label(units)),
                           ),
                         )
                         .toList(),
@@ -422,7 +398,7 @@ class _ChannelReading extends StatelessWidget {
                       label: Text(
                         displayUnit == DisplayUnit.auto
                             ? context.l10n.unitsAuto
-                            : context.l10n.unitsValue(displayUnit.label(units)),
+                            : 'Units: ${displayUnit.label(units)}',
                       ),
                     ),
                   ),
@@ -474,12 +450,30 @@ class _ChannelReading extends StatelessWidget {
           if (minMaxTracking && minimum != null && maximum != null)
             Padding(
               padding: EdgeInsets.only(top: 6),
-              child: Text(
-                'Min ${_formatTrackedValue(context, minimum!)}   Max ${_formatTrackedValue(context, maximum!)}',
-                style: TextStyle(
-                  fontSize: compact ? 9 : 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Min ${_formatTrackedValue(minimum!)} · '
+                      'Avg ${_formatTrackedValue(average ?? minimum!)} · '
+                      'Max ${_formatTrackedValue(maximum!)}',
+                      key: ValueKey('min-max-$label'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: compact ? 10 : 12,
+                        fontFamily: 'monospace',
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (onMinMaxReset != null && !compact)
+                    IconButton(
+                      constraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                      icon: Icon(Icons.restart_alt, size: 18),
+                      tooltip: 'Reset min, average and max',
+                      onPressed: onMinMaxReset,
+                    ),
+                ],
               ),
             ),
         ],
@@ -487,16 +481,117 @@ class _ChannelReading extends StatelessWidget {
     );
   }
 
-  String _formatValue(BuildContext context) {
-    if (max == 0) return context.formatReading(0, digits - 1);
-    final double adjusted = value * displayUnit.scaleFor(value).multiplier;
-    return context.formatReading(adjusted, digits - 1);
+  Widget _valueRow(
+    BuildContext context, {
+    required double fontSize,
+    required double unitSize,
+  }) {
+    if (isOutOfRange && hasFreshSample) {
+      return Tooltip(
+        message: 'Overload: the input exceeds the selected range',
+        child: Text(
+          'OL',
+          key: ValueKey('reading-overload-$label'),
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+            color: Colors.orange.shade700,
+          ),
+        ),
+      );
+    }
+    final hideValue =
+        !hasFreshSample || (possiblyFloating && !showFloatingValues);
+    return Row(
+      key: ValueKey('reading-value-with-unit-$label'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(
+          hideValue
+              ? '—'
+              : _formatValue().replaceAll(
+                  '.',
+                  context.l10n.localeName == 'fr' ? ',' : '.',
+                ),
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+            color: color,
+          ),
+        ),
+        if (!hideValue) ...[
+          SizedBox(width: fontSize * 0.2),
+          Text(
+            _getPrefix() + units,
+            style: TextStyle(
+              fontSize: unitSize,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
-  String _getPrefix() => displayUnit.scaleFor(value).prefix;
-
-  String _formatTrackedValue(BuildContext context, double trackedValue) {
-    final scale = displayUnit.scaleFor(trackedValue);
-    return '${context.formatReading(trackedValue * scale.multiplier, 5)}${scale.prefix}$units';
+  /// One 40 px menu for the compact card's secondary controls: units and
+  /// min/max tracking.
+  Widget _compactMenu() {
+    return PopupMenuButton<String>(
+      tooltip: 'More options for $label',
+      icon: Icon(Icons.more_vert, size: 20),
+      constraints: BoxConstraints(minWidth: 200),
+      onSelected: (value) {
+        if (value.startsWith('unit:')) {
+          final name = value.substring(5);
+          onDisplayUnitChanged?.call(
+            DisplayUnit.values.firstWhere((u) => u.name == name),
+          );
+        } else if (value == 'track') {
+          onMinMaxChanged?.call(!minMaxTracking);
+        } else if (value == 'reset') {
+          onMinMaxReset?.call();
+        }
+      },
+      itemBuilder: (_) => [
+        for (final unit in DisplayUnit.choicesFor(units))
+          CheckedPopupMenuItem(
+            value: 'unit:${unit.name}',
+            checked: unit == displayUnit,
+            child: Text('Units: ${unit.label(units)}'),
+          ),
+        if (onMinMaxChanged != null) ...[
+          PopupMenuDivider(),
+          CheckedPopupMenuItem(
+            value: 'track',
+            checked: minMaxTracking,
+            child: Text('Track min/avg/max'),
+          ),
+          PopupMenuItem(
+            value: 'reset',
+            enabled: minMaxTracking && onMinMaxReset != null,
+            child: Text('Reset min/avg/max'),
+          ),
+        ],
+      ],
+    );
   }
+
+  ReadingFormat get _format => ReadingFormat(
+    units: units,
+    fullScale: max,
+    significantDigits: digits,
+    displayUnit: displayUnit,
+  );
+
+  String _formatValue() => _format.number(value);
+
+  String _getPrefix() => _format.scaleFor(value).prefix;
+
+  String _formatTrackedValue(double trackedValue) =>
+      _format.format(trackedValue);
 }

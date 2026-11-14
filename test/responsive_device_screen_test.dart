@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
+import 'package:moosh_revolt/widgets/realtime_chart.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/screens/device_screen.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
@@ -60,8 +63,9 @@ void main() {
     );
     expect(find.byKey(const ValueKey('portrait-meter-layout')), findsOneWidget);
     expect(find.text('MooshRevolt'), findsOneWidget);
-    expect(find.text('3.00000'), findsOneWidget);
-    expect(find.text('1.20000'), findsOneWidget);
+    // Bench-meter format: the 10 A and 60 V ranges fix the decimal point.
+    expect(find.text('0.0030'), findsOneWidget);
+    expect(find.text('1.2000'), findsOneWidget);
   });
 
   testWidgets('stacks readings in a desktop landscape workspace', (
@@ -105,11 +109,11 @@ void main() {
     expect(find.text('Record'), findsNothing);
     expect(find.byTooltip('Save screenshot'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
 
     expect(find.text('Graph style: Dual axis'), findsOneWidget);
-    expect(find.text('Sample rate: 125 Hz'), findsOneWidget);
+    expect(find.text('Sample rate: Auto (125 Hz)'), findsOneWidget);
     expect(find.text('Save screenshot'), findsOneWidget);
   });
 
@@ -130,10 +134,18 @@ void main() {
 
     await tester.tap(ch1);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Resistance'));
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Resistance'));
+    expect(find.text('Continuity tone'), findsNothing);
+    final resistance = find.byKey(const ValueKey('quantity-Resistance'));
+    await tester.ensureVisible(resistance);
+    await tester.pumpAndSettle();
+    await tester.tap(resistance);
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('Continuity tone'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Continuity tone'), findsOneWidget);
   });
 
@@ -151,16 +163,87 @@ void main() {
     await tester.tap(ch2Control);
     await tester.pumpAndSettle();
 
+    // Phones get a full-screen page rather than a sheet.
     expect(find.text('CH2 configuration'), findsOneWidget);
-    expect(find.text('Measurement'), findsOneWidget);
-    expect(find.text('Voltage AC'), findsOneWidget);
-    expect(find.text('Internal Temperature'), findsOneWidget);
-    expect(find.text('Current DC'), findsNothing);
-    expect(find.text('Resistance'), findsNothing);
-    expect(find.text('Input range'), findsOneWidget);
-    expect(find.text('Auto (recommended)'), findsOneWidget);
-    expect(find.text('60 V input'), findsOneWidget);
-    expect(find.text('600 V input'), findsOneWidget);
+    expect(find.text('MEASURE'), findsOneWidget);
+    expect(find.text('Voltage'), findsOneWidget);
+    expect(find.text('AC (RMS)'), findsOneWidget);
+    expect(find.text('Temperature'), findsOneWidget);
+    expect(find.text('Current'), findsNothing);
+    // The shared auxiliary modes are offered on either channel.
+    expect(find.text('Resistance'), findsOneWidget);
+    expect(find.text('RANGE'), findsOneWidget);
+    // Shown in the live reading and as the selected range chip.
+    expect(find.text('Auto · 60 V'), findsNWidgets(2));
+    expect(find.text('60 V'), findsOneWidget);
+    expect(find.text('600 V'), findsOneWidget);
+  });
+
+  testWidgets('voltage asked for on CH1 is set up on CH2 (the V jack)', (
+    tester,
+  ) async {
+    final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
+    // CH2 is busy with something else, as when the user first chose
+    // resistance there.
+    await provider.setInput(1, ChannelMode.internalTemperature.input);
+    await pumpDevice(tester, size: const Size(1280, 800), provider: provider);
+
+    await tester.tap(find.byTooltip('Configure CH1 · Current DC'));
+    await tester.pumpAndSettle();
+    expect(find.text('Voltage → CH2'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('quantity-Voltage')));
+    await tester.pumpAndSettle();
+
+    expect(provider.input(1), ChannelMode.voltage.input);
+    expect(provider.input(0), ChannelMode.current.input);
+    expect(find.text('CH2 configuration'), findsOneWidget);
+    expect(find.textContaining('measured on CH2'), findsWidgets);
+  });
+
+  testWidgets('guide setup hands the shared input to the right channel', (
+    tester,
+  ) async {
+    final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
+    await provider.setInput(1, ChannelMode.resistance.input);
+    await pumpDevice(tester, size: const Size(1280, 800), provider: provider);
+
+    await tester.tap(find.byTooltip('Meter guide'));
+    await tester.pumpAndSettle();
+    final setUp = find.byKey(
+      const ValueKey('guide-set-up-Resistance and continuity'),
+    );
+    await tester.ensureVisible(setUp);
+    await tester.pumpAndSettle();
+    await tester.tap(setUp);
+    await tester.pumpAndSettle();
+
+    // CH2 gave up the shared Ω input so CH1 could take it.
+    expect(provider.input(0), ChannelMode.resistance.input);
+    expect(provider.input(1), ChannelMode.voltage.input);
+    expect(find.textContaining('Set up:'), findsOneWidget);
+  });
+
+  testWidgets('docks channel configuration beside the meter on desktop', (
+    tester,
+  ) async {
+    await pumpDevice(
+      tester,
+      size: const Size(1280, 800),
+      provider: FakeBleProvider(ch1: 0.003, ch2: 1.2),
+    );
+
+    await tester.tap(find.byTooltip('Configure CH1 · Current DC'));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const ValueKey('channel-config-panel'));
+    expect(panel, findsOneWidget);
+    // Not modal: the chart stays on screen next to the panel.
+    expect(find.byType(RealtimeChart), findsOneWidget);
+    expect(find.text('CH1 configuration'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(panel, findsNothing);
   });
 
   testWidgets('tracks min/max independently for each channel', (tester) async {
@@ -170,14 +253,37 @@ void main() {
       provider: FakeBleProvider(ch1: 0.003, ch2: 1.2),
     );
 
-    final trackers = find.byTooltip('Track minimum and maximum values');
-    expect(trackers, findsNWidgets(2));
+    // Compact cards keep units and min/max in one 40 px menu.
+    final menus = find.byTooltip('More options for CH1 · Current DC');
+    expect(menus, findsOneWidget);
+    expect(tester.getSize(menus).width, greaterThanOrEqualTo(40));
 
-    await tester.tap(trackers.first);
-    await tester.pump();
+    await tester.tap(menus);
+    await tester.pumpAndSettle();
+    // The menu scrolls on a short landscape screen.
+    await tester.ensureVisible(find.text('Track min/avg/max'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Track min/avg/max'));
+    await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Stop min/max tracking'), findsOneWidget);
-    expect(find.byTooltip('Track minimum and maximum values'), findsOneWidget);
+    bool tracking() => tester
+        .widget<CheckedPopupMenuItem<String>>(
+          find.widgetWithText(
+            CheckedPopupMenuItem<String>,
+            'Track min/avg/max',
+          ),
+        )
+        .checked;
+
+    // Only CH1 tracks.
+    await tester.tap(menus);
+    await tester.pumpAndSettle();
+    expect(tracking(), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options for CH2 · Voltage DC'));
+    await tester.pumpAndSettle();
+    expect(tracking(), isFalse);
   });
 
   testWidgets('hides unavailable RSSI from the status rail', (tester) async {
@@ -189,7 +295,7 @@ void main() {
 
     expect(find.textContaining('dBm'), findsNothing);
     expect(find.textContaining('Battery'), findsOneWidget);
-    expect(find.text('0 samples'), findsOneWidget);
+    expect(find.text('125 Hz · 0 samples'), findsOneWidget);
   });
 
   testWidgets('shows SD-card logging controls when the card is ready', (
@@ -222,7 +328,7 @@ void main() {
     final provider = FakeBleProvider(ch1: 0.003, ch2: 1.2);
     await pumpDevice(tester, size: const Size(390, 844), provider: provider);
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Disconnect'));
     await tester.pumpAndSettle();
@@ -289,7 +395,7 @@ class FakeBleProvider extends BleProvider {
   }
 
   @override
-  Future<bool> connect(BleDevice device, {int sampleRate = 125}) async {
+  Future<bool> connect(BleDevice device, {int? sampleRate}) async {
     _state = MmConnectionState.connected;
     notifyListeners();
     return true;
@@ -297,4 +403,16 @@ class FakeBleProvider extends BleProvider {
 
   @override
   Future<void> refreshSdLogging() async {}
+
+  /// The range layout of a real Mooshimeter V.1.
+  @override
+  List<double> ranges(int channel) {
+    final input = this.input(channel);
+    return switch (input.shared ?? input.mapping) {
+      'CURRENT' => const [10.0],
+      'VOLTAGE' => const [60.0, 600.0],
+      'RESISTANCE' => const [1e3, 1e4, 1e5, 1e6, 1e7],
+      _ => const [1.2],
+    };
+  }
 }

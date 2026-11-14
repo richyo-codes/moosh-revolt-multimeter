@@ -1,5 +1,5 @@
 name: moosh_revolt
-description: "MooshRevolt: modern Android and Linux desktop client for the Mooshimeter BLE multimeter."
+description: "MooshRevolt: modern Android, Linux, and macOS client for the Mooshimeter BLE multimeter."
 
 publish_to: 'none'
 
@@ -24,6 +24,7 @@ dependencies:
   mooshimeter_ble:
     path: packages/mooshimeter_ble
   path_provider: ^2.1.5
+  url_launcher: ^6.3.3
 
 
 dev_dependencies:
@@ -36,5 +37,3 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
-  assets:
-    - assets/images/mooshrevolt_mark.png

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/l10n/app_localizations.dart';
 import 'package:universal_ble/universal_ble.dart';
@@ -10,12 +12,19 @@ import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/startup_autoconnect.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
+import 'package:moosh_revolt/services/csv_recorder.dart';
+import 'package:moosh_revolt/services/prometheus_exporter.dart';
 
 // --- Shared service instances & navigation key ---
 final SettingsProvider settingsProvider = SettingsProvider();
 const mockMode = bool.fromEnvironment('MOOSHREVOLT_MOCK');
 final MockBleProvider? mockBleProvider = mockMode ? MockBleProvider() : null;
 final BleProvider bleProvider = mockBleProvider ?? BleProvider();
+final PrometheusExporter prometheusExporter = PrometheusExporter(bleProvider);
+final CsvRecorder csvRecorder = CsvRecorder(
+  bleProvider,
+  mathFunction: () => settingsProvider.mathFunction,
+);
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -25,12 +34,38 @@ void main() async {
 
   // Initialize settings (loads remembered devices, autoconnect flag, etc.)
   await settingsProvider.init();
+  // Restore the saved measurement modes; they are sent to the meter when it
+  // connects.
+  for (final channel in const [0, 1]) {
+    await bleProvider.setInput(
+      channel,
+      settingsProvider.channelMode(channel).input,
+    );
+  }
+
+  bleProvider.autoReconnect = settingsProvider.autoReconnect;
+  settingsProvider.addListener(
+    () => bleProvider.autoReconnect = settingsProvider.autoReconnect,
+  );
+
+  // Keep the metrics endpoint in step with its settings.
+  void configureExporter() => unawaited(
+    prometheusExporter.configure(
+      enabled: settingsProvider.exporterEnabled,
+      port: settingsProvider.exporterPort,
+      allowRemote: settingsProvider.exporterAllowRemote,
+    ),
+  );
+  settingsProvider.addListener(configureExporter);
+  configureExporter();
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider.value(value: bleProvider),
+        ChangeNotifierProvider.value(value: prometheusExporter),
+        ChangeNotifierProvider.value(value: csvRecorder),
       ],
       child: const MooshimeterApp(mockMode: mockMode),
     ),

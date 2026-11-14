@@ -5,7 +5,9 @@ import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('keeps the dark-mode control in Settings', (tester) async {
+  testWidgets('offers a System/Light/Dark theme choice in Settings', (
+    tester,
+  ) async {
     final settings = SettingsProvider();
     await tester.pumpWidget(
       ChangeNotifierProvider<SettingsProvider>.value(
@@ -15,7 +17,9 @@ void main() {
     );
 
     expect(find.text('Appearance'), findsOneWidget);
-    expect(find.text('Dark mode'), findsOneWidget);
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.byTooltip('System'), findsOneWidget);
+    expect(find.byTooltip('Dark'), findsOneWidget);
     expect(find.text('Show values for floating probes'), findsOneWidget);
   });
 

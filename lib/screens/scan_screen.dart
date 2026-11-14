@@ -1,3 +1,4 @@
+import 'package:moosh_revolt/screens/meter_guide_screen.dart';
 import 'package:moosh_revolt/l10n/localization.dart';
 import 'dart:async';
 
@@ -228,6 +229,13 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Meter guide',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const MeterGuideScreen()),
+            ),
+          ),
           IconButton(
             icon: Icon(_isScanning ? Icons.stop : Icons.refresh),
             onPressed: _connectingAddress != null

@@ -2,4 +2,5 @@
 library;
 
 export 'src/ble_service.dart';
+export 'src/meter_input.dart';
 export 'src/mooshimeter_protocol.dart';

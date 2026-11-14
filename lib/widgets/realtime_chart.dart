@@ -1,8 +1,9 @@
-import 'dart:math' as math;
 import 'package:moosh_revolt/l10n/localization.dart';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:moosh_revolt/models/meter_reading.dart';
 
 enum GraphStyle { split, dualAxis, sharedAxis }
 
@@ -18,6 +19,22 @@ class RealtimeChart extends StatefulWidget {
   final String ch2Label;
   final GraphStyle style;
 
+  /// Plots a channel's resistance as a two-state open/continuous trace
+  /// instead of ohms.
+  final bool ch1Continuity;
+  final bool ch2Continuity;
+
+  /// Whether each channel is plotted. A hidden channel keeps its legend
+  /// chip, so it can be shown again from the chart itself.
+  final bool showCh1;
+  final bool showCh2;
+  final ValueChanged<bool>? onCh1VisibilityChanged;
+  final ValueChanged<bool>? onCh2VisibilityChanged;
+
+  /// Wall-clock time of x = 0 in seconds since the epoch. When set, the time
+  /// axis shows clock times; otherwise it shows elapsed seconds.
+  final double? timeOrigin;
+
   const RealtimeChart({
     super.key,
     required this.ch1Points,
@@ -29,6 +46,13 @@ class RealtimeChart extends StatefulWidget {
     this.ch1Label = 'Current (A)',
     this.ch2Label = 'Voltage (V)',
     this.style = GraphStyle.dualAxis,
+    this.ch1Continuity = false,
+    this.ch2Continuity = false,
+    this.showCh1 = true,
+    this.showCh2 = true,
+    this.onCh1VisibilityChanged,
+    this.onCh2VisibilityChanged,
+    this.timeOrigin,
   });
 
   @override
@@ -38,50 +62,94 @@ class RealtimeChart extends StatefulWidget {
 class _RealtimeChartState extends State<RealtimeChart> {
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
 
-  Color get _plotBackground =>
-      _isDark ? const Color(0xFF11151A) : const Color(0xFFF1F3F5);
-  Color get _plotBorder =>
-      _isDark ? const Color(0xFF30363D) : const Color(0xFFC4CBD3);
-  Color get _plotText =>
-      _isDark ? const Color(0xFFB7C0CC) : const Color(0xFF334155);
+  Color get _plotBackground => _isDark ? Color(0xFF11151A) : Color(0xFFF1F3F5);
+  Color get _plotBorder => _isDark ? Color(0xFF30363D) : Color(0xFFC4CBD3);
+  Color get _plotText => _isDark ? Color(0xFFB7C0CC) : Color(0xFF334155);
   Color get _gridColor =>
-      _isDark ? Colors.white.withAlpha(24) : const Color(0xFFD2D8DE);
-  double _yMin1 = -600;
-  double _yMax1 = 600;
-  double _yMin2 = -10;
-  double _yMax2 = 10;
+      _isDark ? Colors.white.withAlpha(24) : Color(0xFFD2D8DE);
+  ChartAxisRange _range1 = const ChartAxisRange(-600, 600, 200);
+  ChartAxisRange _range2 = const ChartAxisRange(-10, 10, 5);
+  ChartAxisRange? _sharedRange;
+  List<LinePoint> _ch1Series = [];
+  List<LinePoint> _ch2Series = [];
+
+  /// Continuity values are 0 (open) and 1 (continuous); the half-step margin
+  /// keeps both levels clear of the plot border.
+  static const _continuityRange = ChartAxisRange(-0.5, 1.5, 0.5);
+
+  @override
+  void initState() {
+    super.initState();
+    _updateRanges();
+  }
 
   @override
   void didUpdateWidget(covariant RealtimeChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.ch1Points.isNotEmpty) {
-      double min = double.infinity;
-      double max = -double.infinity;
-      for (final p in widget.ch1Points) {
-        if (p.y < min) min = p.y;
-        if (p.y > max) max = p.y;
-      }
-      final padding = _padding(min, max);
-      _yMin1 = min - padding;
-      _yMax1 = max + padding;
+    _updateRanges();
+  }
+
+  void _updateRanges() {
+    _ch1Series = _series(widget.ch1Points, widget.ch1Continuity);
+    _ch2Series = _series(widget.ch2Points, widget.ch2Continuity);
+    final ch1 = _extent(_ch1Series);
+    final ch2 = _extent(_ch2Series);
+    if (widget.ch1Continuity) {
+      _range1 = _continuityRange;
+    } else if (ch1 != null) {
+      _range1 = ChartAxisRange.resolve(ch1.$1, ch1.$2, _range1);
     }
-    if (widget.ch2Points.isNotEmpty) {
-      double min = double.infinity;
-      double max = -double.infinity;
-      for (final p in widget.ch2Points) {
-        if (p.y < min) min = p.y;
-        if (p.y > max) max = p.y;
-      }
-      final padding = _padding(min, max);
-      _yMin2 = min - padding;
-      _yMax2 = max + padding;
+    if (widget.ch2Continuity) {
+      _range2 = _continuityRange;
+    } else if (ch2 != null) {
+      _range2 = ChartAxisRange.resolve(ch2.$1, ch2.$2, _range2);
+    }
+    if (ch1 != null || ch2 != null) {
+      _sharedRange = ChartAxisRange.resolve(
+        math.min(ch1?.$1 ?? double.infinity, ch2?.$1 ?? double.infinity),
+        math.max(ch1?.$2 ?? -double.infinity, ch2?.$2 ?? -double.infinity),
+        _sharedRange,
+      );
     }
   }
 
-  double _padding(double min, double max) {
-    final span = max - min;
-    final magnitude = math.max(min.abs(), max.abs());
-    return math.max(math.max(span * 0.2, magnitude * 0.1), 1e-9);
+  /// Overloaded samples (NaN) count as open in a continuity trace.
+  static List<LinePoint> _series(
+    List<LinePoint> points,
+    bool continuity,
+  ) => decimateEnvelope(
+    continuity
+        ? [for (final p in points) LinePoint(p.x, hasContinuity(p.y) ? 1 : 0)]
+        : points,
+  );
+
+  static (double, double)? _extent(List<LinePoint> points) {
+    var min = double.infinity;
+    var max = -double.infinity;
+    for (final p in points) {
+      if (!p.y.isFinite) continue;
+      if (p.y < min) min = p.y;
+      if (p.y > max) max = p.y;
+    }
+    return min.isFinite ? (min, max) : null;
+  }
+
+  /// Overloaded samples are NaN; a null spot leaves a gap in the line.
+  static FlSpot _spot(LinePoint point) =>
+      point.y.isFinite ? FlSpot(point.x, point.y) : FlSpot.nullSpot;
+
+  /// The visible time window, shared by every layer so stacked dual-axis
+  /// charts scroll in lockstep.
+  (double, double) get _xWindow {
+    var minX = double.infinity;
+    var maxX = -double.infinity;
+    for (final points in [widget.ch1Points, widget.ch2Points]) {
+      if (points.isEmpty) continue;
+      minX = math.min(minX, points.first.x);
+      maxX = math.max(maxX, points.last.x);
+    }
+    if (minX == maxX) return (minX - 0.5, maxX + 0.5);
+    return (minX, maxX);
   }
 
   @override
@@ -95,28 +163,29 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       child: Column(
         children: [
-          // Legend
+          // Legend: each entry toggles its channel's visibility.
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                Flexible(
-                  child: _LegendDot(
-                    color: widget.ch1Color,
-                    label: (widget.ch1Label == 'Current (A)'
-                        ? context.l10n.currentAxis
-                        : widget.ch1Label),
-                  ),
+                _LegendToggle(
+                  key: ValueKey('legend-ch1'),
+                  channel: 'CH1',
+                  color: widget.ch1Color,
+                  label: widget.ch1Label,
+                  visible: widget.showCh1,
+                  onChanged: widget.onCh1VisibilityChanged,
                 ),
-                const SizedBox(width: 24),
-                Flexible(
-                  child: _LegendDot(
-                    color: widget.ch2Color,
-                    label: (widget.ch2Label == 'Voltage (V)'
-                        ? context.l10n.voltageAxis
-                        : widget.ch2Label),
-                  ),
+                _LegendToggle(
+                  key: ValueKey('legend-ch2'),
+                  channel: 'CH2',
+                  color: widget.ch2Color,
+                  label: widget.ch2Label,
+                  visible: widget.showCh2,
+                  onChanged: widget.onCh2VisibilityChanged,
                 ),
               ],
             ),
@@ -125,14 +194,13 @@ class _RealtimeChartState extends State<RealtimeChart> {
           // Chart
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: widget.ch1Points.isEmpty && widget.ch2Points.isEmpty
-                  ? Center(
-                      child: Text(
-                        context.l10n.waitingSamples,
-                        style: TextStyle(color: _plotText),
-                      ),
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: !widget.showCh1 && !widget.showCh2
+                  ? _placeholder(
+                      'Both channels are hidden. Tap CH1 or CH2 above.',
                     )
+                  : widget.ch1Points.isEmpty && widget.ch2Points.isEmpty
+                  ? _placeholder(context.l10n.waitingSamples)
                   : _buildChartArea(),
             ),
           ),
@@ -141,78 +209,59 @@ class _RealtimeChartState extends State<RealtimeChart> {
     );
   }
 
+  Widget _placeholder(String text) => Center(
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(color: _plotText),
+    ),
+  );
+
+  Widget _ch1Chart({bool showGrid = true}) => LineChart(
+    _singleChartData(
+      _ch1Series,
+      widget.ch1Color,
+      _range1,
+      widget.ch1Label,
+      showGrid: showGrid,
+      continuity: widget.ch1Continuity,
+    ),
+    duration: Duration.zero,
+  );
+
+  Widget _ch2Chart({bool rightAxis = false, bool showGrid = true}) => LineChart(
+    _singleChartData(
+      _ch2Series,
+      widget.ch2Color,
+      _range2,
+      widget.ch2Label,
+      rightAxis: rightAxis,
+      showGrid: showGrid,
+      continuity: widget.ch2Continuity,
+    ),
+    duration: Duration.zero,
+  );
+
   Widget _buildChartArea() {
+    // A single visible channel always gets a full plot with its own axis and
+    // grid, whatever the two-channel style is.
+    if (!widget.showCh2) return _ch1Chart();
+    if (!widget.showCh1) return _ch2Chart();
     switch (widget.style) {
       case GraphStyle.sharedAxis:
-        return LineChart(
-          _chartData(),
-          duration: const Duration(milliseconds: 100),
-        );
+        return LineChart(_chartData(), duration: Duration.zero);
       case GraphStyle.split:
         return Column(
           children: [
-            Expanded(
-              child: LineChart(
-                _singleChartData(
-                  widget.ch1Points,
-                  widget.ch1Color,
-                  _yMin1,
-                  _yMax1,
-                  (widget.ch1Label == 'Current (A)'
-                      ? context.l10n.currentAxis
-                      : widget.ch1Label),
-                ),
-                duration: const Duration(milliseconds: 100),
-              ),
-            ),
+            Expanded(child: _ch1Chart(showGrid: false)),
             Divider(height: 1, color: _plotBorder),
-            Expanded(
-              child: LineChart(
-                _singleChartData(
-                  widget.ch2Points,
-                  widget.ch2Color,
-                  _yMin2,
-                  _yMax2,
-                  (widget.ch2Label == 'Voltage (V)'
-                      ? context.l10n.voltageAxis
-                      : widget.ch2Label),
-                ),
-                duration: const Duration(milliseconds: 100),
-              ),
-            ),
+            Expanded(child: _ch2Chart(showGrid: false)),
           ],
         );
       case GraphStyle.dualAxis:
         return Stack(
           fit: StackFit.expand,
-          children: [
-            LineChart(
-              _singleChartData(
-                widget.ch1Points,
-                widget.ch1Color,
-                _yMin1,
-                _yMax1,
-                (widget.ch1Label == 'Current (A)'
-                    ? context.l10n.currentAxis
-                    : widget.ch1Label),
-                showGrid: true,
-              ),
-              duration: const Duration(milliseconds: 100),
-            ),
-            LineChart(
-              _singleChartData(
-                widget.ch2Points,
-                widget.ch2Color,
-                _yMin2,
-                _yMax2,
-                (widget.ch2Label == 'Voltage (V)'
-                    ? context.l10n.voltageAxis
-                    : widget.ch2Label),
-                rightAxis: true,
-              ),
-              duration: const Duration(milliseconds: 100),
-            ),
-          ],
+          children: [_ch1Chart(), _ch2Chart(rightAxis: true, showGrid: false)],
         );
     }
   }
@@ -220,20 +269,21 @@ class _RealtimeChartState extends State<RealtimeChart> {
   LineChartData _singleChartData(
     List<LinePoint> points,
     Color color,
-    double minY,
-    double maxY,
+    ChartAxisRange range,
     String label, {
     bool rightAxis = false,
     bool showGrid = false,
+    bool continuity = false,
   }) {
-    final spots = points.map((point) => FlSpot(point.x, point.y)).toList();
+    final spots = points.map(_spot).toList();
     final axisTitles = SideTitles(
       showTitles: true,
       reservedSize: 44,
-      getTitlesWidget: (value, meta) => Text(
-        _formatAxisValue(value),
-        style: TextStyle(fontSize: 9, color: _plotText),
-      ),
+      interval: range.step,
+      getTitlesWidget: (value, meta) {
+        final text = continuity ? _continuityLabel(value) : range.format(value);
+        return Text(text, style: TextStyle(fontSize: 9, color: _plotText));
+      },
     );
     // Both layers of the dual-axis Stack must reserve identical plot gutters.
     // `showTitles: false` collapses the gutter in fl_chart, which lets the
@@ -241,15 +291,21 @@ class _RealtimeChartState extends State<RealtimeChart> {
     final blankAxisTitles = SideTitles(
       showTitles: true,
       reservedSize: 64,
-      getTitlesWidget: (_, _) => const SizedBox.shrink(),
+      interval: range.step,
+      getTitlesWidget: (_, _) => SizedBox.shrink(),
     );
+    final (minX, maxX) = _xWindow;
     return LineChartData(
-      minY: minY,
-      maxY: maxY,
-      clipData: const FlClipData.all(),
+      baselineX: _timeBaseline(minX, maxX),
+      minX: minX,
+      maxX: maxX,
+      minY: range.min,
+      maxY: range.max,
+      clipData: FlClipData.all(),
       gridData: FlGridData(
         show: showGrid,
         drawVerticalLine: true,
+        horizontalInterval: range.step,
         getDrawingHorizontalLine: (value) =>
             FlLine(color: _gridColor, strokeWidth: 0.5),
         getDrawingVerticalLine: (value) =>
@@ -257,9 +313,7 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       titlesData: FlTitlesData(
         show: true,
-        bottomTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
+        bottomTitles: _timeTitles(minX, maxX, blank: rightAxis),
         leftTitles: AxisTitles(
           axisNameWidget: rightAxis ? null : _axisLabel(label, color),
           axisNameSize: rightAxis ? 0 : 20,
@@ -270,17 +324,18 @@ class _RealtimeChartState extends State<RealtimeChart> {
           axisNameSize: rightAxis ? 20 : 0,
           sideTitles: rightAxis ? axisTitles : blankAxisTitles,
         ),
-        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
       borderData: FlBorderData(show: false),
       lineBarsData: [
         LineChartBarData(
           spots: spots,
           isCurved: false,
+          isStepLineChart: continuity,
           color: color,
           barWidth: 2,
           isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
+          dotData: FlDotData(show: false),
           belowBarData: BarAreaData(
             show: !rightAxis,
             color: color.withAlpha((0.1 * 255).toInt()),
@@ -291,18 +346,22 @@ class _RealtimeChartState extends State<RealtimeChart> {
   }
 
   LineChartData _chartData() {
-    final ch1Spots = widget.ch1Points
-        .map((point) => FlSpot(point.x, point.y))
-        .toList();
-    final ch2Spots = widget.ch2Points
-        .map((point) => FlSpot(point.x, point.y))
-        .toList();
+    final ch1Spots = _ch1Series.map(_spot).toList();
+    final ch2Spots = _ch2Series.map(_spot).toList();
+    final range = _sharedRange ?? _range1;
+    final (minX, maxX) = _xWindow;
 
     return LineChartData(
-      clipData: const FlClipData.all(),
+      baselineX: _timeBaseline(minX, maxX),
+      minX: minX,
+      maxX: maxX,
+      minY: range.min,
+      maxY: range.max,
+      clipData: FlClipData.all(),
       gridData: FlGridData(
         show: true,
         drawVerticalLine: true,
+        horizontalInterval: range.step,
         getDrawingHorizontalLine: (value) =>
             FlLine(color: _gridColor, strokeWidth: 0.5),
         getDrawingVerticalLine: (value) =>
@@ -310,28 +369,27 @@ class _RealtimeChartState extends State<RealtimeChart> {
       ),
       titlesData: FlTitlesData(
         show: true,
-        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: _timeTitles(minX, maxX),
         leftTitles: AxisTitles(
           axisNameWidget: _axisLabel(
-            '${(widget.ch1Label == 'Current (A)' ? context.l10n.currentAxis : widget.ch1Label)} / ${(widget.ch2Label == 'Voltage (V)' ? context.l10n.voltageAxis : widget.ch2Label)}',
+            '${widget.ch1Label} / ${widget.ch2Label}',
             _plotText,
           ),
           axisNameSize: 20,
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 40,
+            interval: range.step,
             getTitlesWidget: (value, meta) {
               return Text(
-                _formatAxisValue(value),
+                range.format(value),
                 style: TextStyle(fontSize: 9, color: _plotText),
               );
             },
           ),
         ),
-        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
+        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
       borderData: FlBorderData(show: false),
       lineBarsData: [
@@ -340,10 +398,11 @@ class _RealtimeChartState extends State<RealtimeChart> {
           LineChartBarData(
             spots: ch1Spots,
             isCurved: false,
+            isStepLineChart: widget.ch1Continuity,
             color: widget.ch1Color,
             barWidth: 2,
             isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
+            dotData: FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
               color: widget.ch1Color.withAlpha((0.1 * 255).toInt()),
@@ -354,39 +413,84 @@ class _RealtimeChartState extends State<RealtimeChart> {
           LineChartBarData(
             spots: ch2Spots,
             isCurved: false,
+            isStepLineChart: widget.ch2Continuity,
             color: widget.ch2Color,
             barWidth: 2,
             isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
+            dotData: FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
               color: widget.ch2Color.withAlpha((0.1 * 255).toInt()),
             ),
           ),
       ],
-      minY: ch1Spots.isEmpty
-          ? _yMin2
-          : ch2Spots.isEmpty
-          ? _yMin1
-          : math.min(_yMin1, _yMin2),
-      maxY: ch1Spots.isEmpty
-          ? _yMax2
-          : ch2Spots.isEmpty
-          ? _yMax1
-          : math.max(_yMax1, _yMax2),
     );
   }
 
-  String _formatAxisValue(double value) {
-    final magnitude = value.abs();
-    final decimals = switch (magnitude) {
-      >= 100 => 0,
-      >= 10 => 1,
-      >= 1 => 2,
-      >= 0.1 => 3,
-      _ => 4,
-    };
-    return context.formatReading(value, decimals);
+  static String _continuityLabel(double value) => switch (value) {
+    0 => 'Open',
+    1 => 'Cont.',
+    _ => '',
+  };
+
+  /// Tick spacing that gives about five labels across the window.
+  static double _timeStep(double span) {
+    // Sub-second steps serve the waveform view's millisecond windows.
+    const steps = [
+      0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, //
+      1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600,
+    ];
+    final target = span / 5;
+    return steps.firstWhere((s) => s >= target, orElse: () => 3600).toDouble();
+  }
+
+  /// Shifts tick positions so labels fall on round clock times.
+  double _timeBaseline(double minX, double maxX) {
+    final origin = widget.timeOrigin;
+    if (origin == null) return 0;
+    return -(origin % _timeStep(maxX - minX));
+  }
+
+  AxisTitles _timeTitles(double minX, double maxX, {bool blank = false}) {
+    final step = _timeStep(maxX - minX);
+    return AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        reservedSize: 20,
+        interval: step,
+        getTitlesWidget: (value, meta) {
+          // fl_chart also labels the window edges; only round ticks help.
+          if (blank || value == meta.min || value == meta.max) {
+            return SizedBox.shrink();
+          }
+          return SideTitleWidget(
+            meta: meta,
+            child: Text(
+              _timeLabel(value, step),
+              style: TextStyle(fontSize: 9, color: _plotText),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _timeLabel(double x, double step) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final origin = widget.timeOrigin;
+    if (origin == null && step < 1) return '${(x * 1000).round()} ms';
+    if (origin == null) {
+      final seconds = x.round();
+      return seconds >= 60
+          ? '${seconds ~/ 60}:${two(seconds % 60)}'
+          : '${seconds}s';
+    }
+    final time = DateTime.fromMillisecondsSinceEpoch(
+      ((origin + x) * 1000).round(),
+    );
+    return step >= 60
+        ? '${two(time.hour)}:${two(time.minute)}'
+        : '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
   }
 
   Widget _axisLabel(String label, Color color) => Text(
@@ -395,37 +499,173 @@ class _RealtimeChartState extends State<RealtimeChart> {
   );
 }
 
-class _LegendDot extends StatelessWidget {
+class _LegendToggle extends StatelessWidget {
+  const _LegendToggle({
+    super.key,
+    required this.channel,
+    required this.color,
+    required this.label,
+    required this.visible,
+    this.onChanged,
+  });
+
+  final String channel;
   final Color color;
   final String label;
-  const _LegendDot({required this.color, required this.label});
+  final bool visible;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final textColor = Theme.of(context).brightness == Brightness.dark
+        ? Color(0xFFB7C0CC)
+        : Color(0xFF334155);
+    return Tooltip(
+      message: visible ? 'Hide $channel' : 'Show $channel',
+      child: FilterChip(
+        selected: visible,
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        side: BorderSide(color: visible ? color : textColor.withAlpha(90)),
+        selectedColor: color.withAlpha(36),
+        backgroundColor: Colors.transparent,
+        avatar: Icon(
+          visible ? Icons.visibility : Icons.visibility_off,
+          size: 16,
+          color: visible ? color : textColor.withAlpha(140),
         ),
-        const SizedBox(width: 4),
-        Flexible(
+        label: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 260),
           child: Text(
             label,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFFB7C0CC)
-                  : const Color(0xFF334155),
+              color: visible ? textColor : textColor.withAlpha(140),
+              decoration: visible ? null : TextDecoration.lineThrough,
             ),
           ),
         ),
-      ],
+        onSelected: onChanged,
+      ),
     );
   }
+}
+
+/// A Y-axis range that stays put while live samples scroll through it.
+///
+/// Recomputing the axis from the exact min/max of every frame makes the plot
+/// rescale (and its labels change) whenever a sample enters or leaves the
+/// window. Instead the range snaps to round grid steps, grows immediately when
+/// data would leave it, and only shrinks once the data occupies a small part
+/// of it.
+class ChartAxisRange {
+  const ChartAxisRange(this.min, this.max, this.step);
+
+  final double min;
+  final double max;
+  final double step;
+
+  double get span => max - min;
+
+  /// Below this fraction of the current span the axis shrinks to fit again.
+  static const shrinkThreshold = 0.4;
+
+  static const _gridLines = 4;
+
+  static ChartAxisRange resolve(
+    double dataMin,
+    double dataMax,
+    ChartAxisRange? previous,
+  ) {
+    final target = fit(dataMin, dataMax);
+    if (previous != null &&
+        previous.min <= dataMin &&
+        previous.max >= dataMax &&
+        target.span >= previous.span * shrinkThreshold) {
+      return previous;
+    }
+    return target;
+  }
+
+  /// The tightest round range around the data, with headroom so the trace
+  /// never sits on the plot border.
+  static ChartAxisRange fit(double dataMin, double dataMax) {
+    final dataSpan = dataMax - dataMin;
+    final magnitude = math.max(dataMin.abs(), dataMax.abs());
+    final padding = math.max(math.max(dataSpan * 0.2, magnitude * 0.1), 1e-9);
+    final step = _niceStep((dataSpan + 2 * padding) / _gridLines);
+    return ChartAxisRange(
+      ((dataMin - padding) / step).floorToDouble() * step,
+      ((dataMax + padding) / step).ceilToDouble() * step,
+      step,
+    );
+  }
+
+  static double _niceStep(double rough) {
+    final exponent = (math.log(rough) / math.ln10).floorToDouble();
+    final base = math.pow(10, exponent).toDouble();
+    final fraction = rough / base;
+    final nice = fraction <= 1
+        ? 1
+        : fraction <= 2
+        ? 2
+        : fraction <= 5
+        ? 5
+        : 10;
+    return nice * base;
+  }
+
+  /// Formats a tick with just enough decimals to tell neighbouring ticks
+  /// apart.
+  String format(double value) {
+    final decimals = (-(math.log(step) / math.ln10).floor()).clamp(0, 9);
+    // Avoid "-0.00" for a tick computed as a tiny negative rounding error.
+    final rounded = value.abs() < step / 1000 ? 0.0 : value;
+    return rounded.toStringAsFixed(decimals);
+  }
+}
+
+/// Most spots a series is drawn with. Hours of history at 16 samples/s
+/// would otherwise mean tens of thousands of spots per frame.
+const maxChartBuckets = 600;
+
+/// Thins [points] to at most two per bucket of equal time, keeping each
+/// bucket's minimum and maximum in time order, so spikes and overloads stay
+/// visible however long the history is. A bucket with an overload (NaN)
+/// keeps the gap.
+List<LinePoint> decimateEnvelope(
+  List<LinePoint> points, {
+  int buckets = maxChartBuckets,
+}) {
+  if (points.length <= buckets * 2) return points;
+  final start = points.first.x;
+  final width = (points.last.x - start) / buckets;
+  if (width <= 0) return points;
+  final result = <LinePoint>[];
+  var i = 0;
+  for (var bucket = 0; bucket < buckets && i < points.length; bucket++) {
+    final end = bucket == buckets - 1
+        ? double.infinity
+        : start + width * (bucket + 1);
+    LinePoint? low;
+    LinePoint? high;
+    LinePoint? gap;
+    for (; i < points.length && points[i].x < end; i++) {
+      final point = points[i];
+      if (!point.y.isFinite) {
+        gap ??= point;
+        continue;
+      }
+      if (low == null || point.y < low.y) low = point;
+      if (high == null || point.y > high.y) high = point;
+    }
+    final kept = [?low, if (high != null && !identical(high, low)) high, ?gap]
+      ..sort((a, b) => a.x.compareTo(b.x));
+    result.addAll(kept);
+  }
+  return result;
 }
 
 /// A single data point on the chart.

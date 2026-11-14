@@ -17,7 +17,6 @@ extension LocalizedContext on BuildContext {
 
 extension LocalizedChannelMode on ChannelMode {
   String localizedLabel(BuildContext context) => switch (this) {
-    ChannelMode.auto => context.l10n.auto,
     ChannelMode.voltage => context.l10n.voltageDc,
     ChannelMode.voltageAc => context.l10n.voltageAc,
     ChannelMode.current => context.l10n.currentDc,
@@ -25,11 +24,7 @@ extension LocalizedChannelMode on ChannelMode {
     ChannelMode.internalTemperature => context.l10n.internalTemperature,
     ChannelMode.resistance => context.l10n.resistance,
     ChannelMode.diode => context.l10n.diode,
-    ChannelMode.frequency => context.l10n.frequency,
-    ChannelMode.period => context.l10n.period,
     ChannelMode.auxiliaryVoltageDc => context.l10n.auxDc,
     ChannelMode.auxiliaryVoltageAc => context.l10n.auxAc,
-    ChannelMode.temperatureC => '°C',
-    ChannelMode.temperatureF => '°F',
   };
 }

@@ -89,10 +89,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('CH2 · Tension CC'), findsOneWidget);
-      expect(find.text('1,20000'), findsOneWidget);
+      expect(find.text('Tension CC'), findsOneWidget);
+      expect(find.text('1,2000'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.tap(find.byTooltip('More'));
       await tester.pumpAndSettle();
       expect(find.text('Déconnecter'), findsOneWidget);
       expect(tester.takeException(), isNull);

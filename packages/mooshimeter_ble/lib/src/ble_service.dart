@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
+import 'meter_input.dart';
 import 'mooshimeter_protocol.dart';
 
 /// CRC32 lookup table (standard polynomial 0xEDB88320).
@@ -86,19 +88,75 @@ class ConfigNode {
 
 /// Reading data from both channels.
 class DeviceReadings {
+  /// Channel values in the meter's native units (amps, volts, ohms, and
+  /// kelvin for temperature), with the channel offset already removed.
   final double ch1Value;
   final double ch2Value;
   final double timestamp;
+
+  /// Whether a channel's input was saturated on its current range. The value
+  /// is then meaningless and should be shown as overload ("OL").
+  final bool ch1Overload;
+  final bool ch2Overload;
+
+  /// Real power in watts, which the meter computes from the CH1 and CH2
+  /// sample buffers (REAL_PWR). Meaningful when CH1 measures current and
+  /// CH2 voltage; null until the meter has sent it.
+  final double? realPower;
 
   DeviceReadings({
     required this.ch1Value,
     required this.ch2Value,
     required this.timestamp,
+    this.ch1Overload = false,
+    this.ch2Overload = false,
+    this.realPower,
   });
+
+  double value(int channel) => channel == 0 ? ch1Value : ch2Value;
+  bool overload(int channel) => channel == 0 ? ch1Overload : ch2Overload;
 
   @override
   String toString() =>
       'DeviceReadings(ch1: $ch1Value, ch2: $ch2Value, ts: $timestamp)';
+}
+
+/// One buffer of raw samples per channel, in the meter's native units.
+class WaveformCapture {
+  WaveformCapture({
+    required this.ch1,
+    required this.ch2,
+    required this.samplePeriod,
+  });
+
+  final List<double> ch1;
+  final List<double> ch2;
+
+  /// Seconds between samples.
+  final double samplePeriod;
+
+  List<double> channel(int channel) => channel == 0 ? ch1 : ch2;
+}
+
+/// Decodes a CHx:BUF payload (after its 2-byte length) into values: signed
+/// little-endian samples of [bitsPerSample] bits, scaled by [lsbToNative].
+List<double> decodeSampleBuffer(
+  Uint8List data,
+  int bitsPerSample,
+  double lsbToNative,
+) {
+  final bytes = math.max(1, bitsPerSample ~/ 8);
+  final samples = <double>[];
+  for (var i = 0; i + bytes <= data.length; i += bytes) {
+    var raw = 0;
+    for (var b = bytes - 1; b >= 0; b--) {
+      raw = (raw << 8) | data[i + b];
+    }
+    final sign = 1 << (bytes * 8 - 1);
+    if (raw & sign != 0) raw -= sign << 1;
+    samples.add(raw * lsbToNative);
+  }
+  return samples;
 }
 
 /// BLE connection state.
@@ -129,9 +187,38 @@ class BleProvider extends ChangeNotifier {
   bool _readingStreamActive = false;
   bool _readingPollInProgress = false;
   bool _transportConnected = false;
-  bool _voltageAutoRange = true;
-  int _voltageRangeIndex = 0;
-  bool _voltageRangeChangeInProgress = false;
+
+  // Measurement configuration. It belongs to the app session rather than
+  // the link, so it survives a disconnect and is re-applied on reconnect.
+  final List<MeterInput> _inputs = [
+    MeterInput.ch1Default,
+    MeterInput.ch2Default,
+  ];
+  final List<bool> _autoRange = [true, true];
+  final List<int> _rangeIndex = [0, 0];
+  final List<double> _offsets = [0, 0];
+  int? _sampleRateSetting;
+  int _sampleRateIndex = 0;
+  int _bufferDepth = 64;
+  bool _rangeChangeInProgress = false;
+
+  // Waveform (buffer) mode: the meter streams raw sample buffers instead of
+  // averaged values; the app derives the readings from them.
+  bool _waveform = false;
+  final List<int> _bufferBits = [24, 24];
+  final List<double> _bufferScale = [0, 0];
+  final List<List<double>?> _buffers = [null, null];
+  WaveformCapture? _latestWaveform;
+
+  // Automatic reconnection after an unexpected link loss.
+  BleDevice? _lastDevice;
+  bool _autoReconnect = true;
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+  bool _reconnecting = false;
+
+  /// Delays between reconnection attempts; the last one repeats.
+  static const reconnectBackoff = [1, 2, 5, 10, 20, 30];
   final MooshimeterSerialReassembler _serialReassembler =
       MooshimeterSerialReassembler();
   final MooshimeterFrameDecoder _frameDecoder = MooshimeterFrameDecoder();
@@ -147,6 +234,8 @@ class BleProvider extends ChangeNotifier {
   int _ch1ValueNodeId = ConfigNode.ch1Value;
   int _ch2ValueNodeId = ConfigNode.ch2Value;
   int _batteryNodeId = ConfigNode.batV;
+  int _realPowerNodeId = ConfigNode.realPwr;
+  double? _realPower;
 
   // RSSI (not available on Linux, cached for display)
   int _rssi = -999;
@@ -155,8 +244,10 @@ class BleProvider extends ChangeNotifier {
   DeviceReadings? _latestReadings;
   DateTime? _lastReadingsAt;
   DateTime? _discardReadingsUntil;
+  // Synchronous, so listeners see each sample together with the
+  // configuration that produced it (a recorder labels rows by mode).
   final StreamController<DeviceReadings> _readingsController =
-      StreamController<DeviceReadings>.broadcast();
+      StreamController<DeviceReadings>.broadcast(sync: true);
 
   int get rssi => _rssi;
 
@@ -186,10 +277,187 @@ class BleProvider extends ChangeNotifier {
   /// This is useful for non-UI clients that need one coherent CSV row per
   /// meter polling cycle rather than a notification for each individual node.
   Stream<DeviceReadings> get readings => _readingsController.stream;
+
+  /// Publishes a complete sample on [readings]; for simulated providers.
+  @protected
+  void emitReadings(DeviceReadings readings) =>
+      _readingsController.add(readings);
   double get battery => _battery;
   bool get isConnected => _state == MmConnectionState.connected;
-  bool get voltageAutoRange => _voltageAutoRange;
-  int get voltageRangeIndex => _voltageRangeIndex;
+
+  /// Whether the meter streams raw sample buffers (oscilloscope view).
+  bool get waveform => _waveform;
+
+  /// The latest pair of sample buffers in waveform mode.
+  WaveformCapture? get latestWaveform => _latestWaveform;
+
+  /// Switches waveform mode on or off. Readings keep flowing: in waveform
+  /// mode each channel's value is the mean (DC) or RMS (AC) of its buffer.
+  Future<void> setWaveform(bool enabled) async {
+    if (_waveform == enabled) return;
+    _waveform = enabled;
+    _latestWaveform = null;
+    _buffers.fillRange(0, 2, null);
+    if (_deviceId != null && _handshakeDone) {
+      _discardStaleReadings();
+      for (final channel in const [0, 1]) {
+        await _writeChooserByName(
+          'CH${channel + 1}:ANALYSIS',
+          _analysisFor(channel),
+        );
+        await _readBufferFormat(channel);
+      }
+    }
+    notifyListeners();
+  }
+
+  String _analysisFor(int channel) =>
+      _waveform ? 'BUFFER' : _inputs[channel].analysis;
+
+  /// Reads how [channel]'s buffer encodes samples; the scale follows the
+  /// active range, so it is read again after every range change.
+  Future<void> _readBufferFormat(int channel) async {
+    if (!_waveform) return;
+    final prefix = 'CH${channel + 1}';
+    final bits = await _readNode(
+      '$prefix:BUF_BPS',
+      channel == 0 ? ConfigNode.ch1BufBps : ConfigNode.ch2BufBps,
+    );
+    final scale = await _readNode(
+      '$prefix:BUF_LSB2NATIVE',
+      channel == 0 ? ConfigNode.ch1BufLsb2Native : ConfigNode.ch2BufLsb2Native,
+    );
+    if (bits != null && bits.isNotEmpty) _bufferBits[channel] = bits[0];
+    if (scale != null && scale.length >= 4) {
+      _bufferScale[channel] = ByteData.view(
+        scale.buffer,
+        scale.offsetInBytes,
+      ).getFloat32(0, Endian.little);
+    }
+  }
+
+  /// Stores one channel's buffer; once both have arrived, publishes the
+  /// capture and the readings derived from it.
+  void _handleBuffer(int channel, Uint8List payload) {
+    if (!_waveform || payload.length < 2) return;
+    // A buffer can arrive before its scale has been read; read it again
+    // rather than publishing zeros.
+    if (_bufferScale[channel] == 0) {
+      unawaited(_readBufferFormat(channel));
+      return;
+    }
+    final data = Uint8List.sublistView(payload, 2);
+    _buffers[channel] = decodeSampleBuffer(
+      data,
+      _bufferBits[channel],
+      _bufferScale[channel],
+    );
+    final ch1 = _buffers[0];
+    final ch2 = _buffers[1];
+    if (ch1 == null || ch2 == null) return;
+    _buffers.fillRange(0, 2, null);
+    _latestWaveform = WaveformCapture(
+      ch1: ch1,
+      ch2: ch2,
+      samplePeriod: 1 / sampleRateHz,
+    );
+    _ch1Value = _summarize(0, ch1);
+    _ch2Value = _summarize(1, ch2);
+    _updateReadings(emitCompleteSample: true);
+    _applyAutorange();
+  }
+
+  /// The value the meter would report for [samples]: the mean for DC, the
+  /// RMS for AC, minus the channel's zero offset.
+  double _summarize(int channel, List<double> samples) {
+    if (samples.isEmpty) return double.nan;
+    final value = _inputs[channel].isRms
+        ? math.sqrt(
+            samples.fold<double>(0, (sum, x) => sum + x * x) / samples.length,
+          )
+        : samples.fold<double>(0, (sum, x) => sum + x) / samples.length;
+    return value - _offsets[channel];
+  }
+
+  /// Whether a dropped link is being re-established automatically.
+  bool get isReconnecting => _reconnecting;
+
+  /// Attempts made since the link dropped.
+  int get reconnectAttempt => _reconnectAttempt;
+
+  /// Reconnect automatically when the link drops without [disconnect].
+  bool get autoReconnect => _autoReconnect;
+  set autoReconnect(bool value) {
+    _autoReconnect = value;
+    if (!value) cancelReconnect();
+  }
+
+  /// Stops reconnecting; the meter stays disconnected until [connect].
+  void cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (_reconnecting) {
+      _reconnecting = false;
+      _reconnectAttempt = 0;
+      notifyListeners();
+    }
+  }
+
+  /// What [channel] (0 = CH1) currently measures.
+  MeterInput input(int channel) => _inputs[channel];
+
+  /// Whether [channel] may switch to [input]: the shared auxiliary input
+  /// (auxiliary voltage, resistance, diode) serves one channel at a time.
+  bool canUseInput(int channel, MeterInput input) =>
+      !input.usesShared || !_inputs[1 - channel].usesShared;
+
+  /// Full-scale values of [channel]'s ranges, from the meter's tree.
+  List<double> ranges(int channel) {
+    final tree = _tree;
+    return tree == null
+        ? const []
+        : MeterRanges.forInput(tree, channel, _inputs[channel]);
+  }
+
+  /// Full-scale values the connected meter offers for [input] on
+  /// [channel], or null before the configuration tree is known.
+  List<double>? rangesFor(int channel, MeterInput input) {
+    final tree = _tree;
+    return tree == null ? null : MeterRanges.forInput(tree, channel, input);
+  }
+
+  bool autoRange(int channel) => _autoRange[channel];
+  int rangeIndex(int channel) => _rangeIndex[channel];
+
+  /// Full scale of [channel]'s active range, or null before the handshake.
+  double? rangeMax(int channel) {
+    final values = ranges(channel);
+    if (values.isEmpty) return null;
+    return values[_rangeIndex[channel].clamp(0, values.length - 1)];
+  }
+
+  /// The value the meter subtracts from [channel] (its "zero").
+  double offset(int channel) => _offsets[channel];
+
+  /// The requested sample rate, or null when it follows the inputs.
+  int? get sampleRateSetting => _sampleRateSetting;
+  int get sampleRateHz => _sampleRates[_sampleRateIndex];
+  int get bufferDepth => _bufferDepth;
+
+  /// Significant digits supported by the current rate and buffer depth.
+  int get significantDigits => MeterRanges.significantDigits(
+    sampleRateIndex: _sampleRateIndex,
+    bufferDepth: _bufferDepth,
+  );
+
+  /// Time the meter takes to fill one averaging buffer.
+  Duration get bufferPeriod =>
+      Duration(microseconds: (_bufferDepth * 1e6 / sampleRateHz).round());
+
+  static const _sampleRates = [125, 250, 500, 1000, 2000, 4000, 8000];
+
+  /// Sample rates the meter supports.
+  List<int> get sampleRates => _sampleRates;
   int? get sdLogStatus => _sdLogStatus;
   bool get sdCardReady => _sdLogStatus == 0;
   bool get sdLoggingEnabled => _sdLoggingEnabled;
@@ -198,8 +466,16 @@ class BleProvider extends ChangeNotifier {
   String get sdCardStatusLabel {
     final status = _sdLogStatus;
     if (status == null) return 'Status not checked';
-    if (status == 0) return 'Ready';
-    return 'Card unavailable (status $status)';
+    // LOG:STATUS codes as defined by the Mooshimeter firmware.
+    return switch (status) {
+      0 => 'Ready',
+      1 => 'No card inserted',
+      2 => 'Card could not be mounted (use FAT or FAT32)',
+      3 => 'Card is full',
+      4 => 'Write error on the card',
+      5 => 'End of log file',
+      _ => 'Card unavailable (status $status)',
+    };
   }
 
   /// Scan for Mooshimeter devices.
@@ -252,7 +528,10 @@ class BleProvider extends ChangeNotifier {
   }
 
   /// Connect to a Mooshimeter device and run the config tree handshake.
-  Future<bool> connect(BleDevice device, {int sampleRate = 125}) async {
+  ///
+  /// [sampleRate] is the requested rate in Hz, or null to choose it from the
+  /// inputs (125 Hz for DC, 4 kHz for AC).
+  Future<bool> connect(BleDevice device, {int? sampleRate}) async {
     final deviceId = device.deviceId;
     debugPrint(
       '[BLE] >>> connect START device="${device.name}" addr=$deviceId',
@@ -270,9 +549,14 @@ class BleProvider extends ChangeNotifier {
     }
 
     _deviceId = deviceId;
+    _lastDevice = device;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _setState(MmConnectionState.connecting);
 
-    // Listen for connection state changes
+    // Listen for connection state changes. Replace any listener from an
+    // earlier attempt, or each link loss would be handled several times.
+    await _connectionSub?.cancel();
     _connectionSub = UniversalBle.connectionStream(deviceId).listen((
       isConnected,
     ) {
@@ -288,7 +572,12 @@ class BleProvider extends ChangeNotifier {
 
     try {
       debugPrint('[BLE]     calling UniversalBle.connect()');
-      await UniversalBle.connect(deviceId);
+      // Bounded, so a reconnection attempt to a meter that is out of range
+      // fails and retries instead of waiting forever.
+      await UniversalBle.connect(
+        deviceId,
+        timeout: const Duration(seconds: 15),
+      );
       // Some Android backends do not emit the initial `true` value on the
       // connection stream. The successful connect call is authoritative;
       // later false events still take the disconnect path above.
@@ -317,7 +606,8 @@ class BleProvider extends ChangeNotifier {
       // The VALUE nodes are only updated after the meter's acquisition engine
       // is configured and started.  Polling them before this returns valid
       // protocol frames, but normally just zeroes.
-      await _configureMeasurement(sampleRate);
+      _sampleRateSetting = sampleRate;
+      await _configureMeasurement();
 
       // A transport loss can occur while the handshake/configuration is in
       // progress. Do not resurrect the connection state after that loss.
@@ -356,6 +646,8 @@ class BleProvider extends ChangeNotifier {
 
   /// Disconnect from the current device.
   Future<void> disconnect() async {
+    // An explicit disconnect also ends automatic reconnection.
+    cancelReconnect();
     if (_state == MmConnectionState.disconnected) return;
 
     debugPrint('[BLE] >>> disconnect START');
@@ -401,9 +693,66 @@ class BleProvider extends ChangeNotifier {
     if (_state != MmConnectionState.disconnected) {
       _setState(MmConnectionState.disconnected);
     }
+    _scheduleReconnect();
+  }
+
+  /// Scans briefly for the meter with [deviceId].
+  Future<BleDevice?> _rediscover(String deviceId) async {
+    try {
+      await UniversalBle.startScan();
+      return await UniversalBle.scanStream
+          .firstWhere((candidate) => candidate.deviceId == deviceId)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        await UniversalBle.stopScan();
+      } catch (_) {
+        // Scanning may already have stopped.
+      }
+    }
+  }
+
+  /// Retries the last meter with backoff after an unexpected link loss.
+  /// The measurement configuration is kept, so [connect] restores it.
+  void _scheduleReconnect() {
+    final device = _lastDevice;
+    if (!_autoReconnect || device == null || _reconnectTimer != null) return;
+    _reconnecting = true;
+    final delay =
+        reconnectBackoff[_reconnectAttempt.clamp(
+          0,
+          reconnectBackoff.length - 1,
+        )];
+    debugPrint(
+      '[BLE]     reconnecting in ${delay}s (attempt ${_reconnectAttempt + 1})',
+    );
+    notifyListeners();
+    _reconnectTimer = Timer(Duration(seconds: delay), () async {
+      _reconnectTimer = null;
+      if (!_reconnecting) return;
+      _reconnectAttempt++;
+      // The first retry reuses the known peripheral. After that, scan for
+      // it again: once the meter has restarted (battery swap, reboot), the
+      // platform cannot connect to the old handle until it is rediscovered.
+      final target = _reconnectAttempt > 1
+          ? await _rediscover(device.deviceId) ?? device
+          : device;
+      if (!_reconnecting) return;
+      final ok = await connect(target, sampleRate: _sampleRateSetting);
+      if (ok) {
+        _reconnecting = false;
+        _reconnectAttempt = 0;
+        notifyListeners();
+      } else if (_reconnecting) {
+        _scheduleReconnect();
+      }
+    });
   }
 
   void _resetAfterDisconnect() {
+    _realPower = null;
     _deviceId = null;
     _transportConnected = false;
     _handshakeDone = false;
@@ -418,71 +767,66 @@ class BleProvider extends ChangeNotifier {
     _lastReadingsAt = null;
     _rssi = -999;
     _battery = 0.0;
-    _voltageAutoRange = true;
-    _voltageRangeIndex = 0;
-    _voltageRangeChangeInProgress = false;
+    _rangeChangeInProgress = false;
   }
 
-  /// Set sample rate (Hz).
-  Future<void> setSampleRate(int rate) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    // SAMPLING.RATE is a chooser: write the index of the first supported rate
-    // greater than or equal to the requested rate.
-    const supportedRates = [125, 250, 500, 1000, 2000, 4000, 8000];
-    final chooserIndex = supportedRates.indexWhere((value) => value >= rate);
-    final index = chooserIndex < 0 ? supportedRates.length - 1 : chooserIndex;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId('SAMPLING:RATE', ConfigNode.samplingRate),
-      value: Uint8List(1)..[0] = index,
-    );
-    debugPrint(
-      '[BLE]     setSampleRate($rate Hz): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
-  }
-
-  /// Set channel range (0=600V/10A, 1=60V/1A, 2=6V/100mA, 3=600mV/10mA, 4=60mV/1mA, 5=6mV).
-  Future<void> setRange(int channel, int range) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    final nodeId = channel == 0 ? ConfigNode.ch1RangeI : ConfigNode.ch2RangeI;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId(channel == 0 ? 'CH1:RANGE_I' : 'CH2:RANGE_I', nodeId),
-      value: Uint8List(1)..[0] = range,
-    );
-    debugPrint(
-      '[BLE]     setRange(channel=$channel, range=$range): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
-    if (channel == 1) _voltageRangeIndex = range;
-  }
-
-  Future<void> setVoltageRange(int? rangeIndex) async {
-    _voltageAutoRange = rangeIndex == null;
-    final target = rangeIndex ?? (_ch2Value.abs() > 54 ? 1 : 0);
-    await setRange(1, target);
-    notifyListeners();
-  }
-
-  Future<void> setContinuityEnabled(bool enabled) async {
-    // A mode/range change leaves one or more old conversions in the meter's
-    // pipeline. Do not publish them as resistance/current readings.
-    _discardReadingsUntil = DateTime.now().add(
-      const Duration(milliseconds: 800),
-    );
-    _latestReadings = null;
-    notifyListeners();
-    if (enabled) {
-      await _writeChooser('SHARED', ConfigNode.shared, 1); // resistance
-      await _writeChooser('CH1:MAPPING', ConfigNode.ch1Mapping, 2); // shared
-      await setRange(0, 0); // 1 kΩ resistance range
-    } else {
-      await _writeChooser('CH1:MAPPING', ConfigNode.ch1Mapping, 0); // current
-      await setRange(0, 0); // 10 A range
+  /// Sets the sample rate in Hz, or null to follow the inputs: 125 Hz for
+  /// DC measurements and 4 kHz when either channel measures AC (RMS), as the
+  /// original Mooshimeter app does.
+  Future<void> setSampleRate(int? rate) async {
+    _sampleRateSetting = rate;
+    if (_deviceId == null || !_handshakeDone) {
+      notifyListeners();
+      return;
     }
+    await _applySampling();
+    notifyListeners();
+  }
+
+  /// Selects [input] on [channel] (0 = CH1). Returns false when the other
+  /// channel already uses the shared auxiliary input.
+  Future<bool> setInput(int channel, MeterInput input) async {
+    if (!canUseInput(channel, input)) return false;
+    _inputs[channel] = input;
+    _rangeIndex[channel] = _initialRange(channel);
+    if (_deviceId != null && _handshakeDone) {
+      _discardStaleReadings();
+      await _applyChannel(channel);
+      await _applySampling();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Fixes [channel] to range [index] of [ranges], or auto-ranges when
+  /// [index] is null.
+  Future<void> setRange(int channel, int? index) async {
+    _autoRange[channel] = index == null;
+    if (index != null) {
+      final count = ranges(channel).length;
+      _rangeIndex[channel] = count == 0 ? 0 : index.clamp(0, count - 1);
+      if (_deviceId != null && _handshakeDone) {
+        _discardStaleReadings();
+        await _writeRange(channel);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Sets the value the meter subtracts from [channel], for example the lead
+  /// resistance in resistance mode. Use 0 to clear it.
+  Future<void> setOffset(int channel, double offset) async {
+    _offsets[channel] = offset;
+    if (_deviceId != null && _handshakeDone) {
+      final data = Uint8List(4);
+      ByteData.view(data.buffer).setFloat32(0, offset, Endian.little);
+      await _writeValue(
+        'CH${channel + 1}:OFFSET',
+        channel == 0 ? ConfigNode.ch1Offset : ConfigNode.ch2Offset,
+        data,
+      );
+    }
+    notifyListeners();
   }
 
   /// Query the meter's SD-card logger state. LOG:STATUS reports whether the
@@ -521,52 +865,97 @@ class BleProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set channel input mode.
-  Future<void> setInputMode(int channel, int mode) async {
-    final devId = _deviceId;
-    if (devId == null) return;
-    final nodeId = channel == 0 ? ConfigNode.ch1Mapping : ConfigNode.ch2Mapping;
-    final packet = _buildPacket(
-      write: true,
-      nodeId: nodeId,
-      value: Uint8List(1)..[0] = mode,
-    );
-    debugPrint(
-      '[BLE]     setInputMode(channel=$channel, mode=$mode): ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-    );
-    await _sendPacket(packet);
+  Future<void> _configureMeasurement() async {
+    debugPrint('[BLE]     configuring sampling and channel inputs');
+    // Two channels cannot share the auxiliary input; a stale combination
+    // (for example from an older app version) falls back to the defaults.
+    if (_inputs[0].usesShared && _inputs[1].usesShared) {
+      _inputs[1] = MeterInput.ch2Default;
+    }
+    await _applySampling();
+    for (final channel in const [0, 1]) {
+      _rangeIndex[channel] = _autoRange[channel]
+          ? _initialRange(channel)
+          : _rangeIndex[channel];
+      await _applyChannel(channel);
+    }
+    for (final channel in const [0, 1]) {
+      final value = await _readNode(
+        'CH${channel + 1}:OFFSET',
+        channel == 0 ? ConfigNode.ch1Offset : ConfigNode.ch2Offset,
+      );
+      if (value != null && value.length >= 4) {
+        _offsets[channel] = ByteData.view(
+          value.buffer,
+          value.offsetInBytes,
+        ).getFloat32(0, Endian.little);
+      }
+    }
+    await _writeChooserByName('SAMPLING:TRIGGER', 'CONTINUOUS');
   }
 
-  Future<void> _configureMeasurement(int sampleRate) async {
-    debugPrint('[BLE]     configuring sampling and channel analysis');
-    await setSampleRate(sampleRate);
-    await _writeChooser(
-      'SAMPLING:DEPTH',
-      ConfigNode.samplingDepth,
-      1,
-    ); // 64 samples
-    await _writeChooser('CH1:ANALYSIS', ConfigNode.ch1Analysis, 0); // mean/DC
-    await _writeChooser('CH2:ANALYSIS', ConfigNode.ch2Analysis, 0); // mean/DC
-    // CH2's first mapping is VOLTAGE; this is the normal voltage input.
-    await _writeChooser('CH2:MAPPING', ConfigNode.ch2Mapping, 0);
-    // RANGE_I is the index within the active mapping's range choices.
-    await setRange(0, 0); // CH1 current: 10 A
-    await setRange(1, 0); // CH2 voltage: 60 V (best range for a 1.2 V cell)
-    await _writeChooser(
-      'SAMPLING:TRIGGER',
-      ConfigNode.samplingTrigger,
-      2,
-    ); // continuous
+  /// Auto-ranging starts on the highest range, as bench meters do. Ranging
+  /// down jumps straight to the right range in one step, whereas ranging up
+  /// from a saturated reading can only climb one range per sample.
+  int _initialRange(int channel) => math.max(0, ranges(channel).length - 1);
+
+  Future<void> _applyChannel(int channel) async {
+    final input = _inputs[channel];
+    final prefix = 'CH${channel + 1}';
+    if (input.shared != null) {
+      await _writeChooserByName('SHARED', input.shared!);
+    }
+    await _writeChooserByName('$prefix:MAPPING', input.mapping);
+    await _writeChooserByName('$prefix:ANALYSIS', _analysisFor(channel));
+    await _writeRange(channel);
   }
 
-  Future<void> _writeChooser(String path, int fallbackNodeId, int index) async {
-    final packet = _buildPacket(
-      write: true,
-      nodeId: _nodeId(path, fallbackNodeId),
-      value: Uint8List(1)..[0] = index,
+  Future<void> _writeRange(int channel) async {
+    await _writeValue(
+      'CH${channel + 1}:RANGE_I',
+      channel == 0 ? ConfigNode.ch1RangeI : ConfigNode.ch2RangeI,
+      Uint8List.fromList([_rangeIndex[channel]]),
     );
-    debugPrint('[BLE]     write chooser $path index=$index');
-    await _sendPacket(packet);
+    await _readBufferFormat(channel);
+  }
+
+  Future<void> _applySampling() async {
+    final rms = _inputs.any((input) => input.isRms);
+    final rate = _sampleRateSetting ?? (rms ? 4000 : 125);
+    final index = _sampleRates.indexWhere((value) => value >= rate);
+    _sampleRateIndex = index < 0 ? _sampleRates.length - 1 : index;
+    // RMS needs whole cycles of the waveform: 256 samples at 4 kHz cover
+    // several mains periods. DC averages 64 samples.
+    _bufferDepth = rms ? 256 : 64;
+    await _writeChooserByName('SAMPLING:RATE', '$sampleRateHz');
+    await _writeChooserByName('SAMPLING:DEPTH', '$_bufferDepth');
+  }
+
+  /// Drops readings converted before a configuration change. The buffer
+  /// already filling finishes within one period, but its notification can
+  /// arrive a period later over BLE; measured on a V.1, one period let a
+  /// stale 1 kΩ-range value through after switching to 10 kΩ.
+  void _discardStaleReadings() {
+    _discardReadingsUntil = DateTime.now().add(
+      bufferPeriod * 2 + const Duration(milliseconds: 100),
+    );
+    _latestReadings = null;
+  }
+
+  Future<void> _writeChooserByName(String path, String option) async {
+    final node = _tree?.find(path);
+    final index = node?.children.indexWhere((child) => child.name == option);
+    if (node == null || node.id == null || index == null || index < 0) {
+      throw StateError('Meter tree has no option $option for $path');
+    }
+    debugPrint('[BLE]     write chooser $path = $option (index $index)');
+    await _sendPacket(
+      _buildPacket(
+        write: true,
+        nodeId: node.id!,
+        value: Uint8List.fromList([index]),
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
 
@@ -676,6 +1065,7 @@ class BleProvider extends ChangeNotifier {
         _ch1ValueNodeId = _nodeId('CH1:VALUE', ConfigNode.ch1Value);
         _ch2ValueNodeId = _nodeId('CH2:VALUE', ConfigNode.ch2Value);
         _batteryNodeId = _nodeId('BAT_V', ConfigNode.batV);
+        _realPowerNodeId = _nodeId('REAL_PWR', ConfigNode.realPwr);
         debugPrint('[BLE]     runtime config tree parsed');
       } catch (e) {
         debugPrint('[BLE]     handshake FAILED: invalid config tree: $e');
@@ -811,6 +1201,18 @@ class BleProvider extends ChangeNotifier {
 
   /// Handle meter → app data: readings, battery, errors.
   void _handleMeterRead(int nodeId, Uint8List payload, int seqNum) {
+    if (nodeId == _nodeId('CH1:BUF', ConfigNode.ch1Buf)) {
+      _handleBuffer(0, payload);
+      return;
+    }
+    if (nodeId == _nodeId('CH2:BUF', ConfigNode.ch2Buf)) {
+      _handleBuffer(1, payload);
+      return;
+    }
+    // In waveform mode the readings come from the buffers.
+    if (_waveform && (nodeId == _ch1ValueNodeId || nodeId == _ch2ValueNodeId)) {
+      return;
+    }
     if (nodeId == _ch1ValueNodeId) {
       if (payload.length >= 4) {
         _ch1Value = ByteData.view(
@@ -832,7 +1234,16 @@ class BleProvider extends ChangeNotifier {
         ).getFloat32(0, Endian.little);
         _updateReadings(emitCompleteSample: true);
         debugPrint('[BLE]       CH2.VALUE = $_ch2Value');
-        _updateVoltageAutorange();
+        _applyAutorange();
+      }
+      return;
+    }
+    if (nodeId == _realPowerNodeId) {
+      if (payload.length >= 4) {
+        _realPower = ByteData.view(
+          payload.buffer,
+          payload.offsetInBytes,
+        ).getFloat32(0, Endian.little);
       }
       return;
     }
@@ -862,22 +1273,36 @@ class BleProvider extends ChangeNotifier {
     }
   }
 
-  void _updateVoltageAutorange() {
-    if (!_voltageAutoRange || _voltageRangeChangeInProgress) return;
-    final magnitude = _ch2Value.abs();
-    final target = _voltageRangeIndex == 0 && magnitude > 54
-        ? 1
-        : _voltageRangeIndex == 1 && magnitude < 48
-        ? 0
-        : _voltageRangeIndex;
-    if (target == _voltageRangeIndex) return;
-    _voltageRangeChangeInProgress = true;
-    unawaited(
-      setRange(
-        1,
-        target,
-      ).whenComplete(() => _voltageRangeChangeInProgress = false),
-    );
+  /// Moves auto-ranging channels to a better range after a complete sample.
+  void _applyAutorange() {
+    if (_rangeChangeInProgress) return;
+    final readings = _latestReadings;
+    if (readings == null) return;
+    for (final channel in const [0, 1]) {
+      if (!_autoRange[channel]) continue;
+      final values = ranges(channel);
+      if (values.length < 2) continue;
+      // The meter subtracts the offset; range on what the input sees.
+      final raw = readings.overload(channel)
+          ? double.infinity
+          : readings.value(channel) + _offsets[channel];
+      final target = MeterRanges.autorange(values, _rangeIndex[channel], raw);
+      if (target == _rangeIndex[channel]) continue;
+      debugPrint(
+        '[BLE]     autorange CH${channel + 1}: '
+        '${values[_rangeIndex[channel]]} -> ${values[target]}',
+      );
+      _rangeIndex[channel] = target;
+      _rangeChangeInProgress = true;
+      _discardStaleReadings();
+      unawaited(
+        _writeRange(channel).whenComplete(() {
+          _rangeChangeInProgress = false;
+          notifyListeners();
+        }),
+      );
+      return;
+    }
   }
 
   /// Handle app → meter echo (write command acknowledgment).
@@ -897,10 +1322,19 @@ class BleProvider extends ChangeNotifier {
       ch1Value: _ch1Value,
       ch2Value: _ch2Value,
       timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0,
+      ch1Overload: _isOverload(0, _ch1Value),
+      ch2Overload: _isOverload(1, _ch2Value),
+      realPower: _realPower,
     );
     _lastReadingsAt = DateTime.now();
     if (emitCompleteSample) _readingsController.add(_latestReadings!);
     notifyListeners();
+  }
+
+  bool _isOverload(int channel, double value) {
+    final fullScale = rangeMax(channel);
+    if (fullScale == null) return !value.isFinite;
+    return MeterRanges.isOverload(value + _offsets[channel], fullScale);
   }
 
   // --- Packet I/O helpers ---
@@ -992,24 +1426,10 @@ class BleProvider extends ChangeNotifier {
     });
   }
 
-  int _nodeId(String path, int fallback) {
-    final tree = _tree;
-    if (tree == null) {
-      return fallback;
-    }
-    MooshimeterNode? match;
-    void visit(MooshimeterNode node) {
-      if (node.path == path || node.path.endsWith(':$path')) {
-        match = node;
-      }
-      for (final child in node.children) {
-        visit(child);
-      }
-    }
-
-    visit(tree);
-    return match?.id ?? fallback;
-  }
+  /// The id of the node at [path] (for example `CH1:RANGE_I`). Paths must
+  /// be complete: a suffix match would also hit option nodes such as
+  /// `CH1:MAPPING:SHARED` when looking up `SHARED`.
+  int _nodeId(String path, int fallback) => _tree?.find(path)?.id ?? fallback;
 
   // --- Response waiting ---
 
