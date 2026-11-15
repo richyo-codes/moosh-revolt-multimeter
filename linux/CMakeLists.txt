@@ -93,6 +93,13 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# url_launcher_linux 3.2.x uses two GTK3-only calls. Keep this compatibility
+# adapter confined to that plugin in GTK4 builds, without editing the pub cache.
+if(LINUX_GTK_VARIANT STREQUAL "gtk4" AND TARGET url_launcher_linux_plugin)
+  target_compile_options(url_launcher_linux_plugin PRIVATE
+    "-include" "${CMAKE_CURRENT_SOURCE_DIR}/compat/url_launcher_gtk4.h")
+endif()
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

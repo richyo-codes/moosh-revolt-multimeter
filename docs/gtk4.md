@@ -69,6 +69,23 @@ host after installing the Flatpak.
 
 ## Artifact compatibility
 
+The fork adds `url_launcher_linux` 3.2.x for the meter guide's PDF links.
+Versions 3.2.2 and 3.2.3 use `gtk_widget_get_toplevel` and
+`gtk_show_uri_on_window`, which are unavailable in GTK4. A plugin-scoped
+adapter in `linux/compat/url_launcher_gtk4.h` uses GTK4 root lookup and the
+plugin's existing GIO URI-launch fallback. GTK3 builds use the unmodified
+plugin. This does not edit cached dependencies or load GTK3 into GTK4.
+
+A search of the Flutter/package issue trackers did not identify an equivalent
+GTK4 fix. The upstreamable change is to conditionalize the plugin's launch
+path for GTK4; recommend submitting that focused change to `flutter/packages`.
+Keep this adapter temporary and remove it when a compatible upstream version
+is adopted. A minimal reproduction is a GTK4 Flutter Linux app depending on
+`url_launcher`, whose plugin compilation otherwise fails on those two calls.
+URI launching still needs a configured desktop/portal handler on the device;
+headless appliance images may have none. Actual browser/PDF opening is not
+verified by compilation.
+
 The installer verifies that the engine's `gen_snapshot` and the downloaded Dart
 SDK report the same version. The current artifact pin is
 `f2b4375245d63bdb7007d42b4032e0e8d079780c`. Source the exports above before
