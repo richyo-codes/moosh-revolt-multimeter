@@ -5,3 +5,4 @@
 library;
 
 export 'src/mooshimeter_protocol.dart';
+export 'src/chooser_option.dart';

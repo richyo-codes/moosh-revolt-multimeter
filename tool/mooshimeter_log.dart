@@ -207,20 +207,15 @@ class _MooshimeterCliConnection {
   }
 
   /// Writes the chooser at [path] to the option called [option].
-  Future<void> _writeOption(String path, String option) =>
-      _writeNode(_nodeId(path, -1), [_optionIndex(path, option)]);
+  Future<void> _writeOption(String path, String option) => writeChooserOption(
+    _tree?.find(path),
+    option,
+    path: path,
+    write: _writeNode,
+  );
 
   int _optionIndex(String path, String option) {
-    final node = _tree?.find(path);
-    final index = node?.children.indexWhere(
-      (child) =>
-          child.name == option ||
-          double.tryParse(child.name) == double.tryParse(option),
-    );
-    if (node == null || index == null || index < 0) {
-      throw StateError('The meter has no option "$option" for $path.');
-    }
-    return index;
+    return chooserOptionIndex(_tree?.find(path), option, path: path);
   }
 
   Future<void> _poll() async {
