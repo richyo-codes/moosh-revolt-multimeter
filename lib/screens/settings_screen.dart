@@ -389,7 +389,11 @@ class _PrometheusSettings extends StatelessWidget {
     final settings = context.watch<SettingsProvider>();
     // The exporter is absent in widget tests that only provide settings.
     final exporter = context.watch<PrometheusExporter?>();
-    final status = !settings.exporterEnabled
+    final status = exporter?.transitioning == true
+        ? 'Updating metrics listener…'
+        : exporter?.running == true && !settings.exporterEnabled
+        ? 'Listener is still active: ${exporter!.error ?? exporter.url}'
+        : !settings.exporterEnabled
         ? 'Serve live readings at /metrics for Prometheus or Grafana'
         : exporter?.error ??
               (exporter?.url != null
@@ -425,8 +429,13 @@ class _PrometheusSettings extends StatelessWidget {
           SwitchListTile(
             title: Text('Allow access from other devices'),
             subtitle: Text(
-              'Anyone on your network can read the measurements. Off '
-              'serves this computer only.',
+              exporter?.transitioning == true
+                  ? 'Updating access restrictions…'
+                  : exporter?.allowsRemote == true &&
+                        !settings.exporterAllowRemote
+                  ? 'Remote access is still active; check listener status.'
+                  : 'Anyone on your network can read the measurements. Off '
+                        'serves this computer only.',
             ),
             value: settings.exporterAllowRemote,
             onChanged: (allow) => settings.exporterAllowRemote = allow,

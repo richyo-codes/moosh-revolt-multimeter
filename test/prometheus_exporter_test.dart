@@ -112,6 +112,31 @@ void main() {
     expect(staleText, contains('mooshimeter_connected 1'));
   });
 
+  test(
+    'real socket restricts wildcard to loopback and closes on disable',
+    () async {
+      final exporter = PrometheusExporter(BleProvider());
+      addTearDown(exporter.stop);
+      await exporter.configure(enabled: true, port: 0, allowRemote: true);
+      expect(exporter.allowsRemote, isTrue);
+      final port = Uri.parse(exporter.url!).port;
+      await exporter.configure(enabled: true, port: port, allowRemote: false);
+      expect(exporter.allowsRemote, isFalse);
+      expect(exporter.url, 'http://127.0.0.1:$port/metrics');
+      final client = HttpClient();
+      addTearDown(client.close);
+      final response = await (await client.getUrl(
+        Uri.parse(exporter.url!),
+      )).close();
+      expect(response.statusCode, 200);
+      await response.drain<void>();
+      await exporter.configure(enabled: false, port: port, allowRemote: false);
+      expect(exporter.running, isFalse);
+      final probe = await ServerSocket.bind(InternetAddress.anyIPv4, port);
+      await probe.close();
+    },
+  );
+
   test('serves /metrics over HTTP on loopback', () async {
     final provider = _Provider(
       DeviceReadings(ch1Value: 1, ch2Value: 2, timestamp: 0),

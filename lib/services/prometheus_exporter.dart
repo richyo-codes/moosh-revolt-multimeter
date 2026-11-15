@@ -10,12 +10,25 @@ import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 /// exposition format, so readings can be scraped into Prometheus, Grafana
 /// or any compatible collector.
 class PrometheusExporter extends ChangeNotifier {
-  PrometheusExporter(this._provider);
+  PrometheusExporter(
+    this._provider, {
+    Future<HttpServer> Function(InternetAddress address, int port)? bind,
+  }) : _bind = bind ?? ((address, port) => HttpServer.bind(address, port));
 
   static const defaultPort = 9471;
 
   final BleProvider _provider;
+  final Future<HttpServer> Function(InternetAddress address, int port) _bind;
   HttpServer? _server;
+  Future<void> _pending = Future<void>.value();
+  ({bool enabled, int port, bool remote})? _desired;
+  int _generation = 0;
+  int _transitions = 0;
+  bool _disposed = false;
+
+  bool get transitioning => _transitions != 0;
+  bool? get allowsRemote =>
+      _server == null ? null : !_server!.address.isLoopback;
   String? _error;
   int _scrapes = 0;
 
@@ -40,35 +53,70 @@ class PrometheusExporter extends ChangeNotifier {
     required bool enabled,
     required int port,
     required bool allowRemote,
-  }) async {
-    final address = allowRemote
-        ? InternetAddress.anyIPv4
-        : InternetAddress.loopbackIPv4;
-    final current = _server;
-    if (enabled &&
-        current != null &&
-        current.port == port &&
-        current.address == address) {
-      return;
-    }
-    await stop();
-    if (!enabled) return;
-    try {
-      final server = await HttpServer.bind(address, port);
+  }) {
+    if (_disposed) return Future<void>.value();
+    final desired = (enabled: enabled, port: port, remote: allowRemote);
+    if (_desired == desired) return _pending;
+    _desired = desired;
+    final generation = ++_generation;
+    return _enqueue(() async {
+      if (generation != _generation || _disposed) return;
+      await _closeServer();
+      if (!enabled || generation != _generation || _disposed) return;
+      final address = allowRemote
+          ? InternetAddress.anyIPv4
+          : InternetAddress.loopbackIPv4;
+      final server = await _bind(address, port);
+      if (generation != _generation || _disposed) {
+        // A disable, rebind, or dispose superseded this pending socket.
+        // Track it until close succeeds so a close failure cannot hide it.
+        _server = server;
+        await _closeServer();
+        return;
+      }
       _server = server;
       _error = null;
-      server.listen(_handle, onError: (Object _) {});
-    } on SocketException catch (e) {
-      _error = 'Cannot listen on port $port: ${e.osError?.message ?? e}';
-    }
-    notifyListeners();
+      server.listen(
+        _handle,
+        onError: (Object error) {
+          if (!_disposed) {
+            _error = 'Metrics listener failed: $error';
+            notifyListeners();
+          }
+        },
+      );
+    });
   }
 
-  Future<void> stop() async {
+  Future<void> _closeServer() async {
     final server = _server;
-    _server = null;
-    await server?.close(force: true);
-    notifyListeners();
+    if (server == null) return;
+    await server.close(force: true);
+    if (identical(_server, server)) _server = null;
+  }
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    _transitions++;
+    if (!_disposed) notifyListeners();
+    _pending = _pending.then((_) async {
+      try {
+        await operation();
+      } catch (error) {
+        // Settings listeners deliberately do not await these requests.
+        // Consume async failures and expose them through actual socket status.
+        _error = 'Cannot update metrics listener: $error';
+      } finally {
+        _transitions--;
+        if (!_disposed) notifyListeners();
+      }
+    });
+    return _pending;
+  }
+
+  Future<void> stop() {
+    _desired = null;
+    ++_generation; // Invalidate in-flight binds synchronously.
+    return _enqueue(_closeServer);
   }
 
   void _handle(HttpRequest request) {
@@ -95,6 +143,7 @@ class PrometheusExporter extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(stop());
     super.dispose();
   }

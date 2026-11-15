@@ -74,3 +74,16 @@ last value as if it were still true. Use `mooshimeter_overload` and
 Example: chart CH2 voltage in Grafana with
 `mooshimeter_voltage_volts{channel="2"}`, and alert on a disconnected meter
 with `mooshimeter_connected == 0`.
+
+## Listener lifecycle
+
+Start, stop, and access/port changes are serialized. A newer request invalidates
+an in-flight bind; a superseded socket is closed before the transition finishes.
+Identical settings notifications do not reopen the listener. The UI reports
+an access transition or a listener error instead of claiming that an active
+remote listener has already been disabled or restricted to loopback.
+
+`test/prometheus_lifecycle_test.dart` forces pending-bind completion order for
+enable/disable, remote/loopback, port changes, failure, stop, and disposal.
+`test/prometheus_exporter_test.dart` also verifies actual wildcard-to-loopback
+rebinding, HTTP metrics, and port release after disabling on the test host.
