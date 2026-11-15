@@ -617,12 +617,13 @@ packages:
     source: hosted
     version: "6.4.2"
   url_launcher_linux:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: url_launcher_linux
-      sha256: "10f86fef4c2c43563fa6c211ff9cf757adf4d3ab762c56bd430664a947d70cd0"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/url_launcher/url_launcher_linux"
+      ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
+      resolved-ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
+      url: "https://github.com/richyo-codes/packages"
+    source: git
     version: "3.2.3"
   url_launcher_macos:
     dependency: transitive

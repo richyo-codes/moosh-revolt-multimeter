@@ -26,6 +26,12 @@ dependencies:
   path_provider: ^2.1.5
   url_launcher: ^6.3.3
 
+dependency_overrides:
+  url_launcher_linux:
+    git:
+      url: https://github.com/richyo-codes/packages
+      ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
+      path: packages/url_launcher/url_launcher_linux
 
 dev_dependencies:
   flutter_test:

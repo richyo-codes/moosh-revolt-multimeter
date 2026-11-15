@@ -69,19 +69,16 @@ host after installing the Flatpak.
 
 ## Artifact compatibility
 
-The fork adds `url_launcher_linux` 3.2.x for the meter guide's PDF links.
-Versions 3.2.2 and 3.2.3 use `gtk_widget_get_toplevel` and
-`gtk_show_uri_on_window`, which are unavailable in GTK4. A plugin-scoped
-adapter in `linux/compat/url_launcher_gtk4.h` uses GTK4 root lookup and the
-plugin's existing GIO URI-launch fallback. GTK3 builds use the unmodified
-plugin. This does not edit cached dependencies or load GTK3 into GTK4.
+The meter guide's PDF links use Richard Young's GTK3/GTK4-compatible
+[`url_launcher_linux` fork](https://github.com/richyo-codes/packages/tree/b3964973e71e2c699a1bfaccc1b29c722d79e791/packages/url_launcher/url_launcher_linux),
+pinned to `b3964973e71e2c699a1bfaccc1b29c722d79e791` in `pubspec.yaml`.
+This is the same revision used by `rnd-bambu-gtk4` from the
+`feat-add-gtk4-support-url-launcher-v3` branch. Only the Linux implementation
+is overridden; Android, iOS, macOS, web, and Windows retain their hosted
+implementations. No application-side compatibility shim is needed.
 
-A search of the Flutter/package issue trackers did not identify an equivalent
-GTK4 fix. The upstreamable change is to conditionalize the plugin's launch
-path for GTK4; recommend submitting that focused change to `flutter/packages`.
-Keep this adapter temporary and remove it when a compatible upstream version
-is adopted. A minimal reproduction is a GTK4 Flutter Linux app depending on
-`url_launcher`, whose plugin compilation otherwise fails on those two calls.
+Hosted versions 3.2.2 and 3.2.3 use GTK3-only calls that fail to compile with
+GTK4. Keep the override until a compatible upstream release is available.
 URI launching still needs a configured desktop/portal handler on the device;
 headless appliance images may have none. Actual browser/PDF opening is not
 verified by compilation.
