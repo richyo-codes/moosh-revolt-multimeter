@@ -1,5 +1,13 @@
 # UI verification
 
+The fork integration adds `test/mobile_merge_regression_test.dart`: it checks
+320×568 and 390×844 phone portrait, 844×390 landscape, 480×320 embedded,
+800×480, and 1280×800 layouts at 1.25 text scaling. Both themes and
+English/French readings are exercised. Each case opens CH2 configuration and
+verifies the phone full-screen page can close or the desktop panel can dock,
+with no layout exceptions. These are widget checks, not physical touchscreen
+or device rendering certification.
+
 MooshRevolt uses deterministic widget tests for the responsive meter workspace
 and integration screenshots for visual review. The widget suite is run in CI;
 the screenshot suite is intended for local review and release assets.

@@ -32,15 +32,19 @@ JSON booleans and integers, not strings.
 | `schemaVersion` | Integer `1` | Version 1 |
 | `autoConnect` | Boolean | `true` |
 | `skipUpgrade` | Boolean | `false` |
-| `sampleRateHz` | Integer: `125`, `250`, `500`, `1000`, `2000`, `4000`, `8000` | `125` |
+| `sampleRateHz` | Integer: `125`, `250`, `500`, `1000`, `2000`, `4000`, `8000` | Automatic by measurement (125 Hz DC, 4 kHz AC) |
 | `graphMaxPoints` | Integer from `2` through `100000` | `300` |
-| `darkMode` | Boolean (`true`: dark, `false`: light) | `false` |
+| `darkMode` | Boolean (`true`: dark, `false`: light) | System appearance |
 | `showFloatingReadings` | Boolean | `false` |
 | `rememberedDevices` | Array of device objects; replaces the saved list | Empty list |
 
 `graphMaxPoints` bounds in-memory graph history in points per channel, not
 seconds or persistent logs. `skipUpgrade` exposes the existing UI preference;
 it does not add firmware upgrade execution or new channel configuration.
+The new chart time window and the point cap are independent; history is removed
+when either limit is reached. Legacy saved fixed sample rates and dark/light
+preferences are migrated. An explicit `sampleRateHz` or `darkMode` continues to
+override the newer automatic-rate/system-theme defaults without being persisted.
 
 Each device requires `address` and `name`. The address must be six hexadecimal
 octets separated by colons, such as `00:11:22:33:44:55`. Addresses are
