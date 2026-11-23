@@ -145,6 +145,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get saveScreenshot => 'Enregistrer une capture d’écran';
 
   @override
+  String get exitApp => 'Quitter';
+
+  @override
   String get disconnect => 'Déconnecter';
 
   @override

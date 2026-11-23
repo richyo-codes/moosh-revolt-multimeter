@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/models/math_channel.dart';
@@ -22,6 +23,7 @@ class SettingsProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   TemperatureUnit _temperatureUnit = TemperatureUnit.celsius;
   bool _showFloatingReadings = false;
+  bool _showExitMenu = false;
   String? _languageCode;
 
   Locale? get locale => _languageCode == null ? null : Locale(_languageCode!);
@@ -74,6 +76,7 @@ class SettingsProvider extends ChangeNotifier {
 
   /// How much history the live chart keeps.
   Duration get chartWindow => _chartWindow;
+  bool get showExitMenu => _showExitMenu;
   bool get showFloatingReadings => _showFloatingReadings;
   ThemeMode get themeMode => _themeMode;
   TemperatureUnit get temperatureUnit => _temperatureUnit;
@@ -214,9 +217,21 @@ class SettingsProvider extends ChangeNotifier {
     }
     _showFloatingReadings =
         values['showFloatingReadings'] as bool? ?? _showFloatingReadings;
+    _showExitMenu =
+        Platform.isLinux && (values['showExitMenu'] as bool? ?? _isFlutterPi());
     _operatorDeviceList = config.rememberedDevices != null;
     _rememberedDevices = config.rememberedDevices ?? _rememberedDevices;
     notifyListeners();
+  }
+
+  static bool _isFlutterPi() {
+    // The embedder owns the process, even when invoked through a launcher.
+    try {
+      return Link('/proc/self/exe').targetSync().split('/').last ==
+          'flutter-pi';
+    } on FileSystemException {
+      return false;
+    }
   }
 
   // --- Connection Settings ---

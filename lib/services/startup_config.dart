@@ -29,6 +29,7 @@ class StartupConfig {
       'graphMaxPoints',
       'darkMode',
       'showFloatingReadings',
+      'showExitMenu',
       'rememberedDevices',
     };
     for (final key in input.keys) {
@@ -45,6 +46,7 @@ class StartupConfig {
       'skipUpgrade',
       'darkMode',
       'showFloatingReadings',
+      'showExitMenu',
     ]) {
       if (input.containsKey(key) && input[key] is! bool) {
         throw FormatException('$key must be a boolean');

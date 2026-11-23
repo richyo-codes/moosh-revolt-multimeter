@@ -43,6 +43,7 @@
   "copyCsv": "Copy CSV logger command",
   "saveSnapshot": "Save data snapshot",
   "saveScreenshot": "Save screenshot",
+  "exitApp": "Exit",
   "disconnect": "Disconnect",
   "connectingMeter": "Connecting to meter…",
   "meterDisconnected": "Meter disconnected",

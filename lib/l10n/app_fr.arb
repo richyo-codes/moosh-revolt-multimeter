@@ -43,6 +43,7 @@
   "copyCsv": "Copier la commande CSV",
   "saveSnapshot": "Enregistrer les données",
   "saveScreenshot": "Enregistrer une capture d’écran",
+  "exitApp": "Quitter",
   "disconnect": "Déconnecter",
   "connectingMeter": "Connexion au multimètre…",
   "meterDisconnected": "Multimètre déconnecté",

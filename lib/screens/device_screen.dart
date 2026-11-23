@@ -338,6 +338,12 @@ class _DeviceScreenState extends State<DeviceScreen>
                       Icons.bluetooth_disabled,
                       context.l10n.disconnect,
                     ),
+                    if (settings.showExitMenu)
+                      _menuItem(
+                        'exit',
+                        Icons.exit_to_app,
+                        context.l10n.exitApp,
+                      ),
                   ],
                 ),
               ],
@@ -2013,10 +2019,22 @@ class _DeviceScreenState extends State<DeviceScreen>
       case 'screenshot':
         unawaited(_saveScreenshot());
         break;
+      case 'exit':
+        unawaited(_exitApp());
+        break;
       case 'disconnect':
         context.read<BleProvider>().disconnect();
         break;
     }
+  }
+
+  Future<void> _exitApp() async {
+    try {
+      await _recorder?.stop();
+    } catch (error) {
+      debugPrint('Could not finish recording before exit: $error');
+    }
+    exit(0);
   }
 
   Future<void> _showGraphStylePicker() async {

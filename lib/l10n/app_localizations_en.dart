@@ -142,6 +142,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get saveScreenshot => 'Save screenshot';
 
   @override
+  String get exitApp => 'Exit';
+
+  @override
   String get disconnect => 'Disconnect';
 
   @override

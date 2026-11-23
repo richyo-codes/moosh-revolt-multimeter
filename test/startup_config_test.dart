@@ -124,6 +124,7 @@ void main() {
       {'skipUpgrade': 1},
       {'darkMode': 'dark'},
       {'showFloatingReadings': 0},
+      {'showExitMenu': 'false'},
       {'sampleRateHz': 126},
       {'sampleRateHz': 125.0},
       {'graphMaxPoints': 1},

@@ -36,7 +36,12 @@ JSON booleans and integers, not strings.
 | `graphMaxPoints` | Integer from `2` through `100000` | `300` |
 | `darkMode` | Boolean (`true`: dark, `false`: light) | System appearance |
 | `showFloatingReadings` | Boolean | `false` |
+| `showExitMenu` | Boolean (Linux only) | `true` under flutter-pi, `false` otherwise |
 | `rememberedDevices` | Array of device objects; replaces the saved list | Empty list |
+
+Set `"showExitMenu": false` to hide Exit from the scan and meter menus on a
+kiosk. Set it to `true` to show Exit on Linux when the embedder executable
+has a custom name. Apply changes by restarting the app.
 
 `graphMaxPoints` bounds in-memory graph history in points per channel, not
 seconds or persistent logs. `skipUpgrade` exposes the existing UI preference;

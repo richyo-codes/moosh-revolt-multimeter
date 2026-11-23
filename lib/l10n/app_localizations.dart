@@ -356,6 +356,12 @@ abstract class AppLocalizations {
   /// **'Save screenshot'**
   String get saveScreenshot;
 
+  /// No description provided for @exitApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit'**
+  String get exitApp;
+
   /// No description provided for @disconnect.
   ///
   /// In en, this message translates to:

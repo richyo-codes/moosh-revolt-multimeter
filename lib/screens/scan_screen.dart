@@ -1,6 +1,7 @@
 import 'package:moosh_revolt/screens/meter_guide_screen.dart';
 import 'package:moosh_revolt/l10n/localization.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:moosh_revolt/widgets/mooshrevolt_mark.dart';
@@ -213,6 +214,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showExit = context.watch<SettingsProvider>().showExitMenu;
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
@@ -247,6 +249,8 @@ class _ScanScreenState extends State<ScanScreen> {
             onSelected: (value) {
               if (value == 'settings') {
                 Navigator.pushNamed(context, '/settings');
+              } else if (value == 'exit') {
+                exit(0);
               }
             },
             itemBuilder: (_) => [
@@ -254,6 +258,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 value: 'settings',
                 child: Text(context.l10n.settings),
               ),
+              if (showExit)
+                PopupMenuItem(value: 'exit', child: Text(context.l10n.exitApp)),
             ],
           ),
         ],
