@@ -44,39 +44,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Archive Linux bundle for Flatpak
-        run: tar -C build/linux/x64/release -czf linux-bundle.tar.gz bundle
-      - uses: actions/upload-artifact@v6
-        with:
-          name: flatpak-linux-input
-          path: linux-bundle.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
-  flatpak:
-    needs: verify
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          lfs: true
-      - uses: actions/download-artifact@v8
-        with:
-          name: flatpak-linux-input
-      - name: Extract Linux bundle
-        run: |
-          mkdir -p build/linux/x64/release
-          tar -xzf linux-bundle.tar.gz -C build/linux/x64/release
-      - name: Install Flatpak tooling
+      - name: Build Flatpak bundle
+        id: flatpak
+        continue-on-error: true
         run: |
           sudo apt-get update
           sudo apt-get install --yes flatpak flatpak-builder
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk/x86_64/25.08 org.freedesktop.Platform/x86_64/25.08
-      - name: Build Flatpak bundle
-        run: ./tools/build_flatpak.sh --skip-build
+          ./tools/build_flatpak.sh --skip-build
       - name: Upload Flatpak bundle
+        if: steps.flatpak.outcome == 'success'
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: mooshrevolt-flatpak
