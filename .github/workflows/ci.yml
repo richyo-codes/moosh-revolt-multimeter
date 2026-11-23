@@ -47,14 +47,6 @@ jobs:
       - name: Archive Linux bundle for Flatpak
         run: tar -C build/linux/x64/release -czf linux-bundle.tar.gz bundle
       - uses: actions/upload-artifact@v6
-        if: github.server_url == 'https://github.com'
-        with:
-          name: flatpak-linux-input
-          path: linux-bundle.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-      - uses: actions/upload-artifact@v3
-        if: github.server_url != 'https://github.com'
         with:
           name: flatpak-linux-input
           path: linux-bundle.tar.gz
@@ -70,11 +62,6 @@ jobs:
         with:
           lfs: true
       - uses: actions/download-artifact@v8
-        if: github.server_url == 'https://github.com'
-        with:
-          name: flatpak-linux-input
-      - uses: actions/download-artifact@v3
-        if: github.server_url != 'https://github.com'
         with:
           name: flatpak-linux-input
       - name: Extract Linux bundle
