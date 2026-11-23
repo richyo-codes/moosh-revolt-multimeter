@@ -8,9 +8,12 @@ and request a 1280 x 720 startup window with native decorations.
 
 Use a checkout of `https://github.com/richyo-codes/flutter.git`, branch
 `3.48.0-gtk4.issue94804.20260925`, pinned to
-`e95aed6a2a35bdcc2242d944e08267b78f9ea317`:
+`dbffa60d521e3c3a9580b47df00fcd4875d493a8`. Fetch the upstream version tag
+before first running the SDK so Flutter can derive a version for Pub:
 
 ```sh
+git -C /path/to/flutter-fork fetch --no-tags https://github.com/flutter/flutter.git \
+  refs/tags/3.51.0-0.2.pre:refs/tags/3.51.0-0.2.pre
 export FLUTTER_BIN=/path/to/flutter-fork/bin/flutter
 export FLUTTER_PREBUILT_ENGINE_VERSION=89573e968cbf3febdf4f07189cc2bef6cbef830b
 export FLUTTER_STORAGE_BASE_URL=https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
@@ -70,12 +73,10 @@ host after installing the Flatpak.
 ## Artifact compatibility
 
 The meter guide's PDF links use Richard Young's GTK3/GTK4-compatible
-[`url_launcher_linux` fork](https://github.com/richyo-codes/packages/tree/b3964973e71e2c699a1bfaccc1b29c722d79e791/packages/url_launcher/url_launcher_linux),
-pinned to `b3964973e71e2c699a1bfaccc1b29c722d79e791` in `pubspec.yaml`.
-This is the same revision used by `rnd-bambu-gtk4` from the
-`feat-add-gtk4-support-url-launcher-v3` branch. Only the Linux implementation
-is overridden; Android, iOS, macOS, web, and Windows retain their hosted
-implementations. No application-side compatibility shim is needed.
+[`url_launcher_linux` fork](https://github.com/richyo-codes/packages/tree/3c47c005a32ecdd1baf6b021a09236548eb60909/packages/url_launcher/url_launcher_linux),
+pinned to `3c47c005a32ecdd1baf6b021a09236548eb60909` in `pubspec.yaml`.
+The revision is from the `feat-add-gtk4-support-v7` branch. The override
+applies to the Linux implementation.
 
 Hosted versions 3.2.2 and 3.2.3 use GTK3-only calls that fail to compile with
 GTK4. Keep the override until a compatible upstream release is available.

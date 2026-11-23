@@ -612,8 +612,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "packages/url_launcher/url_launcher_linux"
-      ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
-      resolved-ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
+      ref: "3c47c005a32ecdd1baf6b021a09236548eb60909"
+      resolved-ref: "3c47c005a32ecdd1baf6b021a09236548eb60909"
       url: "https://github.com/richyo-codes/packages"
     source: git
     version: "3.2.3"

@@ -30,7 +30,7 @@ dependency_overrides:
   url_launcher_linux:
     git:
       url: https://github.com/richyo-codes/packages
-      ref: b3964973e71e2c699a1bfaccc1b29c722d79e791
+      ref: 3c47c005a32ecdd1baf6b021a09236548eb60909
       path: packages/url_launcher/url_launcher_linux
 
 dev_dependencies:

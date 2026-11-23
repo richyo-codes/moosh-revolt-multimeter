@@ -14,7 +14,8 @@ jobs:
     env:
       FLUTTER_GTK4_REPOSITORY: https://github.com/richyo-codes/flutter.git
       FLUTTER_GTK4_BRANCH: 3.48.0-gtk4.issue94804.20260925
-      FLUTTER_GTK4_SHA: e95aed6a2a35bdcc2242d944e08267b78f9ea317
+      FLUTTER_GTK4_SHA: dbffa60d521e3c3a9580b47df00fcd4875d493a8
+      FLUTTER_UPSTREAM_VERSION_TAG: 3.51.0-0.2.pre
       FLUTTER_PREBUILT_ENGINE_VERSION: 89573e968cbf3febdf4f07189cc2bef6cbef830b
       FLUTTER_STORAGE_BASE_URL: https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
       FLUTTER_ENGINE_STORAGE_BASE_URL: https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
@@ -33,7 +34,10 @@ jobs:
         run: |
           set -euo pipefail
           sdk="$RUNNER_TEMP/flutter-gtk4"
-          git clone --single-branch --branch "$FLUTTER_GTK4_BRANCH" "$FLUTTER_GTK4_REPOSITORY" "$sdk"
+          git clone --no-tags --single-branch --branch "$FLUTTER_GTK4_BRANCH" "$FLUTTER_GTK4_REPOSITORY" "$sdk"
+          # Flutter derives its framework version from upstream release tags.
+          git -C "$sdk" fetch --no-tags https://github.com/flutter/flutter.git \
+            "refs/tags/$FLUTTER_UPSTREAM_VERSION_TAG:refs/tags/$FLUTTER_UPSTREAM_VERSION_TAG"
           git -C "$sdk" checkout --detach "$FLUTTER_GTK4_SHA"
           echo "FLUTTER_BIN=$sdk/bin/flutter" >> "$GITHUB_ENV"
           FLUTTER_STORAGE_BASE_URL="$FLUTTER_ENGINE_STORAGE_BASE_URL" "$sdk/bin/flutter" --version
