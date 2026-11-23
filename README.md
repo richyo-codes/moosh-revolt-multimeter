@@ -61,6 +61,11 @@ The Mooshimeter transport and configuration-tree protocol live in the local
 that improve compatibility, reliability, accessibility, packaging, and testing
 are welcome.
 
+## Yocto
+
+The [Yocto layer](yocto/README.md) packages MooshRevolt for flutter-pi on
+embedded Linux.
+
 ## Safety
 
 This is early software. Verify readings independently before using it for
