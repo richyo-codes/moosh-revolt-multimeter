@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:universal_ble/universal_ble.dart';
 import 'package:moosh_revolt/widgets/device_tile.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
+import 'package:moosh_revolt/services/linux_bluetooth.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 
@@ -21,12 +22,14 @@ class ScanScreen extends StatefulWidget {
   final Future<bool> Function(BleDevice) onDeviceSelected;
   final BleDevice? connectedDevice;
   final bool checkConnectedDevices;
+  final Future<bool> Function() bluetoothAvailable;
 
   const ScanScreen({
     super.key,
     required this.onDeviceSelected,
     this.connectedDevice,
     this.checkConnectedDevices = true,
+    this.bluetoothAvailable = canDiscoverBluetooth,
   });
 
   @override
@@ -55,7 +58,6 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     if (widget.checkConnectedDevices) {
-      _checkConnectedDevices();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _startScan();
       });
@@ -99,6 +101,13 @@ class _ScanScreenState extends State<ScanScreen> {
     });
 
     try {
+      if (!await widget.bluetoothAvailable()) {
+        if (mounted) setState(_showBluetoothUnavailable);
+        return;
+      }
+      if (!mounted || !_isScanning) return;
+      if (widget.checkConnectedDevices) unawaited(_checkConnectedDevices());
+
       _screenLog('    cancelling existing _scanSub');
       await _scanSub?.cancel();
       if (!mounted) return;
@@ -149,6 +158,7 @@ class _ScanScreenState extends State<ScanScreen> {
       });
       await _scanSub?.cancel();
       _scanSub = null;
+      return;
     }
 
     if (!mounted) return;
@@ -158,6 +168,13 @@ class _ScanScreenState extends State<ScanScreen> {
       _screenLog('>>> timeout reached, calling _stopScan');
       unawaited(_stopScan());
     });
+  }
+
+  void _showBluetoothUnavailable() {
+    _isScanning = false;
+    _connectingAddress = null;
+    _connectedDevices = [];
+    _scanStatus = (context) => context.l10n.bluetoothUnavailable;
   }
 
   Future<void> _stopScan() async {
@@ -450,6 +467,12 @@ class _ScanScreenState extends State<ScanScreen> {
         _scanStatus = (context) => context.l10n.lookingFor(dev.name);
       });
     }
+
+    if (!await widget.bluetoothAvailable()) {
+      if (mounted) setState(_showBluetoothUnavailable);
+      return;
+    }
+    if (!mounted) return;
 
     // Check if already connected at OS level
     _screenLog(

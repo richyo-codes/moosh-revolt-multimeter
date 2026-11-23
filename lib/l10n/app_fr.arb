@@ -43,6 +43,7 @@
   "copyCsv": "Copier la commande CSV",
   "saveSnapshot": "Enregistrer les données",
   "saveScreenshot": "Enregistrer une capture d’écran",
+  "bluetoothUnavailable": "Bluetooth indisponible. Branchez ou activez un adaptateur Bluetooth, puis relancez la recherche.",
   "exitApp": "Quitter",
   "disconnect": "Déconnecter",
   "connectingMeter": "Connexion au multimètre…",

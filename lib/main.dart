@@ -11,6 +11,7 @@ import 'package:moosh_revolt/screens/about_screen.dart';
 import 'package:mooshimeter_ble/mooshimeter_ble.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
 import 'package:moosh_revolt/services/startup_autoconnect.dart';
+import 'package:moosh_revolt/services/linux_bluetooth.dart';
 import 'package:moosh_revolt/services/mock_ble_provider.dart';
 import 'package:moosh_revolt/services/csv_recorder.dart';
 import 'package:moosh_revolt/services/prometheus_exporter.dart';
@@ -163,8 +164,15 @@ class _HomePageState extends State<HomePage> {
   Future<void> _tryAutoConnect() async {
     if (!mounted) return;
     try {
+      final settings = context.read<SettingsProvider>();
+      if (!settings.autoConnect ||
+          !settings.rememberedDevices.any((device) => device.autoConnect) ||
+          !await canDiscoverBluetooth() ||
+          !mounted) {
+        return;
+      }
       final device = await findStartupDevice(
-        settings: context.read<SettingsProvider>(),
+        settings: settings,
         systemDevices: () => UniversalBle.getSystemDevices(withServices: []),
         scanStream: UniversalBle.scanStream,
         startScan: () => UniversalBle.startScan(),

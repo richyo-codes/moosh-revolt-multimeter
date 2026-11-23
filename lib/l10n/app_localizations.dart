@@ -356,6 +356,12 @@ abstract class AppLocalizations {
   /// **'Save screenshot'**
   String get saveScreenshot;
 
+  /// No description provided for @bluetoothUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth unavailable. Connect or enable a Bluetooth adapter, then tap Scan.'**
+  String get bluetoothUnavailable;
+
   /// No description provided for @exitApp.
   ///
   /// In en, this message translates to:

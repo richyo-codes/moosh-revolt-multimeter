@@ -145,6 +145,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get saveScreenshot => 'Enregistrer une capture d’écran';
 
   @override
+  String get bluetoothUnavailable =>
+      'Bluetooth indisponible. Branchez ou activez un adaptateur Bluetooth, puis relancez la recherche.';
+
+  @override
   String get exitApp => 'Quitter';
 
   @override

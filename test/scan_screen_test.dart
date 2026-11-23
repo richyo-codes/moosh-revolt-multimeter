@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moosh_revolt/l10n/app_localizations.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
 import 'package:moosh_revolt/screens/scan_screen.dart';
 import 'package:moosh_revolt/services/settings_service.dart';
@@ -19,6 +20,41 @@ class _SavedSettings extends SettingsProvider {
 }
 
 void main() {
+  testWidgets('an unavailable adapter leaves Scan ready to retry', (
+    tester,
+  ) async {
+    var probes = 0;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
+          ChangeNotifierProvider(create: (_) => BleProvider()),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ScanScreen(
+            bluetoothAvailable: () async {
+              probes++;
+              return false;
+            },
+            onDeviceSelected: (_) async => false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Bluetooth unavailable'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(probes, 1);
+
+    await tester.tap(find.byTooltip('Scan'));
+    await tester.pumpAndSettle();
+    expect(probes, 2);
+    await tester.pump(const Duration(seconds: 12));
+    expect(find.textContaining('Bluetooth unavailable'), findsOneWidget);
+  });
+
   for (final size in [
     const Size(390, 844),
     const Size(844, 390),
