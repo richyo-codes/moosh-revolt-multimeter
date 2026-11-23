@@ -1136,6 +1136,7 @@ class BleProvider extends ChangeNotifier {
           UniversalBle.characteristicValueStream(
             devId,
             MooshimeterUUIDs.readChar,
+            serviceId: MooshimeterUUIDs.meterService,
           ).listen((data) {
             debugPrint(
               '[BLE]   <<< BLE IN (${data.length} bytes): ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
