@@ -12,7 +12,7 @@ Use a checkout of `https://github.com/richyo-codes/flutter.git`, branch
 
 ```sh
 export FLUTTER_BIN=/path/to/flutter-fork/bin/flutter
-export FLUTTER_PREBUILT_ENGINE_VERSION=f2b4375245d63bdb7007d42b4032e0e8d079780c
+export FLUTTER_PREBUILT_ENGINE_VERSION=89573e968cbf3febdf4f07189cc2bef6cbef830b
 export FLUTTER_STORAGE_BASE_URL=https://pub-79a02b1963fb4da6b5e4e4816e8b7146.r2.dev
 export FLUTTER_ENGINE_STORAGE_BASE_URL="$FLUTTER_STORAGE_BASE_URL"
 FLUTTER_STORAGE_BASE_URL="$FLUTTER_ENGINE_STORAGE_BASE_URL" "$FLUTTER_BIN" --version
@@ -85,6 +85,6 @@ verified by compilation.
 
 The installer verifies that the engine's `gen_snapshot` and the downloaded Dart
 SDK report the same version. The current artifact pin is
-`f2b4375245d63bdb7007d42b4032e0e8d079780c`. Source the exports above before
+`89573e968cbf3febdf4f07189cc2bef6cbef830b`. Source the exports above before
 invoking Flutter or FVM so SDK initialization and the Linux archive installer
 use the same mirror.
