@@ -83,6 +83,53 @@ class MooshimeterApp extends StatelessWidget {
   final bool enableBle;
   final bool mockMode;
 
+  static ThemeData _appTheme(Brightness brightness) {
+    final colors = ColorScheme.fromSeed(
+      seedColor: Colors.blue,
+      brightness: brightness,
+    );
+    final focusColor = colors.primary.withValues(alpha: 0.30);
+    final keyboardFocus = ButtonStyle(
+      overlayColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused) ? focusColor : null,
+      ),
+      side: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused)
+            ? BorderSide(color: colors.primary, width: 3)
+            : null,
+      ),
+    );
+    return ThemeData(
+      colorScheme: colors,
+      useMaterial3: true,
+      focusColor: focusColor,
+      iconButtonTheme: IconButtonThemeData(style: keyboardFocus),
+      filledButtonTheme: FilledButtonThemeData(style: keyboardFocus),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: keyboardFocus),
+      textButtonTheme: TextButtonThemeData(style: keyboardFocus),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: keyboardFocus),
+      switchTheme: SwitchThemeData(overlayColor: keyboardFocus.overlayColor),
+      appBarTheme: brightness == Brightness.light
+          ? const AppBarTheme(elevation: 0, centerTitle: false)
+          : null,
+      cardTheme: brightness == Brightness.light
+          ? CardThemeData(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            )
+          : null,
+      inputDecorationTheme: brightness == Brightness.light
+          ? InputDecorationTheme(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            )
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
@@ -93,30 +140,8 @@ class MooshimeterApp extends StatelessWidget {
       title: 'MooshRevolt',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(elevation: 0, centerTitle: false),
-        cardTheme: CardThemeData(
-          elevation: 1,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: _appTheme(Brightness.light),
+      darkTheme: _appTheme(Brightness.dark),
       themeMode: settings.themeMode,
       home: HomePage(enableBle: enableBle, mockMode: mockMode),
       routes: {

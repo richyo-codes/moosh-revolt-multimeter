@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moosh_revolt/l10n/app_localizations.dart';
 import 'package:moosh_revolt/models/remembered_device.dart';
@@ -53,6 +54,52 @@ void main() {
     expect(probes, 2);
     await tester.pump(const Duration(seconds: 12));
     expect(find.textContaining('Bluetooth unavailable'), findsOneWidget);
+  });
+
+  testWidgets('Tab and Enter reach the scan menu on a 480×320 display', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(480, 320);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var openedSettings = false;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
+          ChangeNotifierProvider(create: (_) => BleProvider()),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routes: {
+            '/settings': (_) {
+              openedSettings = true;
+              return const Scaffold();
+            },
+          },
+          home: ScanScreen(
+            checkConnectedDevices: false,
+            onDeviceSelected: (_) async => false,
+          ),
+        ),
+      ),
+    );
+
+    Future<void> press(LogicalKeyboardKey key) async {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+    }
+
+    for (var i = 0; i < 3; i++) {
+      await press(LogicalKeyboardKey.tab);
+    }
+    await press(LogicalKeyboardKey.enter);
+    expect(find.text('Settings'), findsOneWidget);
+    await press(LogicalKeyboardKey.tab);
+    await press(LogicalKeyboardKey.enter);
+    expect(openedSettings, isTrue);
   });
 
   for (final size in [

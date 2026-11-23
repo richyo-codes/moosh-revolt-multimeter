@@ -8,7 +8,7 @@ class DeviceTile extends StatelessWidget {
   final int rssi;
   final bool isConnected;
   final bool isConnecting;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   /// Whether this device has been remembered (persisted for auto-connect).
   final bool isRemembered;
@@ -35,6 +35,10 @@ class DeviceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rssiColor = _rssiColor(rssi);
+    final action = isRemembered ? onForget : onRemember;
+    final actionLabel = isRemembered
+        ? context.l10n.forgetDevice
+        : context.l10n.rememberDevice;
 
     return ListTile(
       leading: Stack(
@@ -125,60 +129,39 @@ class DeviceTile extends StatelessWidget {
               ),
               visualDensity: VisualDensity.compact,
             )
-          : isRemembered
+          : action != null
           ? IconButton(
-              icon: Icon(Icons.check_circle, color: Colors.amber),
-              onPressed: onTap,
-              tooltip: context.l10n.connect,
+              icon: const Icon(Icons.more_vert),
+              onPressed: onTap == null
+                  ? null
+                  : () => _showDeviceAction(context, actionLabel, action),
+              tooltip: actionLabel,
             )
-          : Icon(Icons.arrow_forward_ios, size: 16),
+          : const Icon(Icons.chevron_right),
       onTap: onTap,
-      onLongPress: () {
-        // Long press shows remember/forget options
-        _showDeviceActions(context);
-      },
+      onLongPress: action == null || onTap == null
+          ? null
+          : () => _showDeviceAction(context, actionLabel, action),
     );
   }
 
-  void _showDeviceActions(BuildContext context) {
+  void _showDeviceAction(
+    BuildContext context,
+    String label,
+    VoidCallback action,
+  ) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isRemembered)
-              ListTile(
-                leading: Icon(Icons.delete, color: Colors.red),
-                title: Text(context.l10n.forgetDevice),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onForget?.call();
-                },
-              ),
-            if (!isRemembered)
-              ListTile(
-                leading: Icon(Icons.star, color: Colors.amber),
-                title: Text(context.l10n.rememberDevice),
-                subtitle: Text(context.l10n.autoConnectNext),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onRemember?.call();
-                },
-              ),
-            if (!isRemembered && onRemember == null)
-              ListTile(
-                leading: Icon(Icons.star, color: Colors.amber),
-                title: Text(context.l10n.rememberDevice),
-                subtitle: Text(context.l10n.autoConnectNext),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  // Inline remember if no callback provided
-                  // (handled by parent via onRemember)
-                },
-              ),
-            SizedBox(height: 8),
-          ],
+        child: ListTile(
+          autofocus: true,
+          leading: Icon(isRemembered ? Icons.delete : Icons.star),
+          title: Text(label),
+          subtitle: isRemembered ? null : Text(context.l10n.autoConnectNext),
+          onTap: () {
+            Navigator.pop(ctx);
+            action();
+          },
         ),
       ),
     );

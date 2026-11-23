@@ -118,14 +118,21 @@ class _ResizableSplitState extends State<ResizableSplit> {
                 child: SizedBox(
                   width: horizontal ? ResizableSplit.handleThickness : null,
                   height: horizontal ? null : ResizableSplit.handleThickness,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      width: horizontal ? 4 : 40,
-                      height: horizontal ? 40 : 4,
-                      decoration: BoxDecoration(
-                        color: active ? colors.primary : colors.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
+                  child: ColoredBox(
+                    color: _focused
+                        ? Theme.of(context).focusColor
+                        : Colors.transparent,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        width: horizontal ? 4 : 40,
+                        height: horizontal ? 40 : 4,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? colors.primary
+                              : colors.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                   ),

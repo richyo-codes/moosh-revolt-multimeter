@@ -424,6 +424,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                     for (final result in _devices)
                       Card.outlined(
+                        key: ValueKey(result.device.deviceId),
                         child: DeviceTile(
                           name: result.device.name ?? 'Mooshimeter',
                           address: result.device.deviceId,
@@ -432,9 +433,9 @@ class _ScanScreenState extends State<ScanScreen> {
                               provider.state == MmConnectionState.connected &&
                               provider.deviceId == result.device.deviceId,
                           isConnecting: _isConnecting(result.device.deviceId),
-                          onTap: () {
-                            if (!busy) _selectDevice(result.device);
-                          },
+                          onTap: busy
+                              ? null
+                              : () => _selectDevice(result.device),
                           isRemembered: settings.isRemembered(
                             result.device.deviceId.toLowerCase(),
                           ),
